@@ -1,6 +1,11 @@
 package schema
 
-import "gorm.io/gorm"
+import (
+	"encoding/json"
+	"io"
+
+	"gorm.io/gorm"
+)
 
 type Users struct {
 	gorm.Model
@@ -8,4 +13,12 @@ type Users struct {
 	Password uint   `gorm:"notnull"`
 	Username string
 	Avatar   []byte
+}
+
+func ParseUser(data io.ReadCloser) (*Users, error) {
+	var user Users
+	if err := json.NewDecoder(data).Decode(&user); err != nil {
+		return nil, err
+	}
+	return &user, nil
 }

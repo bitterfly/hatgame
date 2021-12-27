@@ -1,12 +1,11 @@
 package server
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 
+	"github.com/bitterfly/go-chaos/hatgame/database"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"gorm.io/gorm"
 )
@@ -42,32 +41,17 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleNew(w http.ResponseWriter, r *http.Request) {
-	user, err := ParseUser(r.Body)
+	user, err := schema.ParseUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user. Nutty boi."))
 		return
 	}
-	id, err := AddUser(s.DB, user)
+	id, err := database.AddUser(s.DB, user)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(fmt.Sprintf("%d", id)))
-}
-
-func ParseUser(data io.ReadCloser) (*schema.Users, error) {
-	var user schema.Users
-	if err := json.NewDecoder(data).Decode(&user); err != nil {
-		return nil, err
-	}
-	return &user, nil
-}
-
-func AddUser(db *gorm.DB, user *schema.Users) (uint, error) {
-	if err := db.Create(user).Error; err != nil {
-		return 0, err
-	}
-	return user.ID, nil
 }
