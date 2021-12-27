@@ -86,3 +86,9 @@ func AddUser(db *gorm.DB, user *schema.Users) (uint, error) {
 	}
 	return user.ID, nil
 }
+
+func GetUser(db *gorm.DB, id uint) (*schema.Users, error) {
+	var user schema.Users
+	err := db.First(&user, id).Error
+	return &user, err
+}
