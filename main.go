@@ -21,8 +21,8 @@ func main() {
 	}
 	log.Printf("Migrated the database.")
 
-	server := server.New(db, "localhost", "8080")
-	err = server.Connect()
+	server := server.New(db)
+	err = server.Connect("localhost:8080")
 	if err != nil {
 		panic(err)
 	}
