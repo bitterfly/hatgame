@@ -63,7 +63,7 @@ func AddTestUsers(db *gorm.DB) []uint {
 	return ids
 }
 
-func UpdateUserPassword(db *gorm.DB, id uint, password int) error {
+func UpdateUserPassword(db *gorm.DB, id uint, password uint) error {
 	fmt.Printf("%d\n", id)
 	return db.Model(&schema.Users{}).Where("id = ?", id).Update("password", password).Error
 }
@@ -87,8 +87,14 @@ func AddUser(db *gorm.DB, user *schema.Users) (uint, error) {
 	return user.ID, nil
 }
 
-func GetUser(db *gorm.DB, id uint) (*schema.Users, error) {
+func GetUserByID(db *gorm.DB, id uint) (*schema.Users, error) {
 	var user schema.Users
 	err := db.First(&user, id).Error
+	return &user, err
+}
+
+func GetUserByEmail(db *gorm.DB, email string) (*schema.Users, error) {
+	var user schema.Users
+	err := db.Where("email = ?", email).First(&user).Error
 	return &user, err
 }
