@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -44,15 +45,32 @@ func getPsqlInfo(filename string) (*psqlInfo, error) {
 }
 
 func Automigrate(db *gorm.DB) error {
-	err := db.AutoMigrate(&schema.Users{})
+	err := db.AutoMigrate(&schema.User{})
 	return err
 }
 
 func AddTestUsers(db *gorm.DB) []uint {
-	users := []schema.Users{
-		{Email: "dodo@gmail.com", Password: 1234, Username: "dodo"},
-		{Email: "foo@gmail.com", Password: 4567, Username: "foo"},
-		{Email: "bar@gmail.com", Password: 8910, Username: "bar"},
+	p1, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
+	p2, _ := bcrypt.GenerateFromPassword([]byte("1337"), bcrypt.DefaultCost)
+	fmt.Printf("p2: %v\n", p2)
+	p3, _ := bcrypt.GenerateFromPassword([]byte("6969"), bcrypt.DefaultCost)
+
+	users := []schema.User{
+		{
+			Email:    "dodo@gmail.com",
+			Password: p1,
+			Username: "dodo",
+		},
+		{
+			Email:    "foo@gmail.com",
+			Password: p2,
+			Username: "foo",
+		},
+		{
+			Email:    "bar@gmail.com",
+			Password: p3,
+			Username: "bar",
+		},
 	}
 	db.Create(&users)
 	ids := make([]uint, len(users))
@@ -63,9 +81,9 @@ func AddTestUsers(db *gorm.DB) []uint {
 	return ids
 }
 
-func UpdateUserPassword(db *gorm.DB, id uint, password uint) error {
+func UpdateUserPassword(db *gorm.DB, id uint, password []byte) error {
 	fmt.Printf("%d\n", id)
-	return db.Model(&schema.Users{}).Where("id = ?", id).Update("password", password).Error
+	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Error
 }
 
 func Open(filename string) (*gorm.DB, error) {
@@ -80,21 +98,21 @@ func Open(filename string) (*gorm.DB, error) {
 	return db, nil
 }
 
-func AddUser(db *gorm.DB, user *schema.Users) (uint, error) {
+func AddUser(db *gorm.DB, user *schema.User) (uint, error) {
 	if err := db.Create(user).Error; err != nil {
 		return 0, err
 	}
 	return user.ID, nil
 }
 
-func GetUserByID(db *gorm.DB, id uint) (*schema.Users, error) {
-	var user schema.Users
+func GetUserByID(db *gorm.DB, id uint) (*schema.User, error) {
+	var user schema.User
 	err := db.First(&user, id).Error
 	return &user, err
 }
 
-func GetUserByEmail(db *gorm.DB, email string) (*schema.Users, error) {
-	var user schema.Users
+func GetUserByEmail(db *gorm.DB, email string) (*schema.User, error) {
+	var user schema.User
 	err := db.Where("email = ?", email).First(&user).Error
 	return &user, err
 }

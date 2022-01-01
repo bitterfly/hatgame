@@ -12,6 +12,7 @@ import (
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
 
@@ -57,7 +58,7 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
-	user, err := schema.ParseUser(r.Body)
+	user, err := ParseUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -69,8 +70,12 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Wrong email or password."))
 		return
 	}
-	if dbUser.Password != user.Password {
+	f, _ := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	fmt.Printf("o: %s\nh: %v\ndb: %v\n", user.Password, f, dbUser.Password)
+
+	if err := bcrypt.CompareHashAndPassword(dbUser.Password, []byte(user.Password)); err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
+		log.Printf("%s\n", err.Error())
 		w.Write([]byte("Wrong email or password."))
 		return
 	}
@@ -130,21 +135,27 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 	token := ExtractToken(r)
-	fmt.Printf("%s\n", token)
 	payload, err := s.Token.VerifyToken(token)
-	fmt.Printf("%v, %v\n", payload, err)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte(fmt.Sprintf("%s", err)))
 		return
 	}
-	user, err := schema.ParseUser(r.Body)
+	user, err := ParseUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
 		return
 	}
-	err = database.UpdateUserPassword(s.DB, payload.Id, user.Password)
+
+	newPassowrd, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not encrypt password."))
+		return
+	}
+	fmt.Printf("Password: %s Writing to database %d, %v\n", user.Password, payload.Id, newPassowrd)
+	err = database.UpdateUserPassword(s.DB, payload.Id, newPassowrd)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
