@@ -1,16 +1,31 @@
 package containers
 
 import (
+	"encoding/json"
 	"fmt"
 	"sync"
 )
 
 type Game struct {
-	Players    map[uint]struct{}
+	Players    MutexMap
 	NumPlayers int
 	Timer      int
 	Host       uint
-	Mutex      *sync.RWMutex `json:"-"`
+}
+
+type MutexMap struct {
+	Data  map[uint]struct{}
+	Mutex *sync.RWMutex
+}
+
+func (mm MutexMap) MarshalJSON() ([]byte, error) {
+	var out struct {
+		Players []uint
+	}
+	for k := range mm.Data {
+		out.Players = append(out.Players, k)
+	}
+	return json.Marshal(out)
 }
 
 func NewGame(host uint, players, timer int) Game {
@@ -18,31 +33,32 @@ func NewGame(host uint, players, timer int) Game {
 	playerIds[host] = struct{}{}
 
 	return Game{
-		Players:    playerIds,
+		Players: MutexMap{
+			Data:  playerIds,
+			Mutex: &sync.RWMutex{}},
 		NumPlayers: players,
 		Timer:      timer,
 		Host:       host,
-		Mutex:      &sync.RWMutex{},
 	}
 }
 
 func (g *Game) Put(max int, id uint) error {
-	g.Mutex.Lock()
-	defer g.Mutex.Unlock()
-	if len(g.Players) == max {
+	g.Players.Mutex.Lock()
+	defer g.Players.Mutex.Unlock()
+	if len(g.Players.Data) == max {
 		return fmt.Errorf("too many players")
 	}
-	if _, ok := g.Players[id]; ok {
+	if _, ok := g.Players.Data[id]; ok {
 		return fmt.Errorf("player already in game")
 	}
 	fmt.Printf("Adding player with id: %d\n", id)
-	g.Players[id] = struct{}{}
+	g.Players.Data[id] = struct{}{}
 	return nil
 }
 
 func (g *Game) Get(id uint) bool {
-	g.Mutex.RLock()
-	defer g.Mutex.RUnlock()
-	_, ok := g.Players[id]
+	g.Players.Mutex.RLock()
+	defer g.Players.Mutex.RUnlock()
+	_, ok := g.Players.Data[id]
 	return ok
 }

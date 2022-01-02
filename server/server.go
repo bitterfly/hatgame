@@ -201,7 +201,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	s.Mutex.Unlock()
 
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(fmt.Sprintf("%d", gameId)))
+	json.NewEncoder(w).Encode(game)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
