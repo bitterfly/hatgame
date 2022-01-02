@@ -23,7 +23,7 @@ type Server struct {
 	Server *http.Server
 	DB     *gorm.DB
 	Token  Token
-	Games  map[uint64]containers.Game
+	Games  map[uint]containers.Game
 	Mutex  *sync.RWMutex
 }
 
@@ -32,13 +32,13 @@ func New(db *gorm.DB) *Server {
 		DB:    db,
 		Mux:   mux.NewRouter(),
 		Token: NewToken(32),
-		Games: make(map[uint64]containers.Game),
+		Games: make(map[uint]containers.Game),
 		Mutex: &sync.RWMutex{},
 	}
 }
 
-func (s *Server) getGameId() uint64 {
-	var m uint64
+func (s *Server) getGameId() uint {
+	var m uint
 	for k := range s.Games {
 		if k > m {
 			m = k
@@ -194,9 +194,9 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	game := containers.NewGame(payload.Id, host.Players, host.Timer)
 	s.Mutex.Lock()
 	gameId := s.getGameId()
+	game := containers.NewGame(gameId, payload.Id, host.Players, host.Timer)
 	s.Games[gameId] = game
 	s.Mutex.Unlock()
 
@@ -226,7 +226,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Mutex.RLock()
-	game, ok := s.Games[gameIdU]
+	game, ok := s.Games[uint(gameIdU)]
 	s.Mutex.RUnlock()
 	if !ok {
 		w.WriteHeader(http.StatusBadRequest)

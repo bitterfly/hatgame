@@ -7,6 +7,7 @@ import (
 )
 
 type Game struct {
+	Id         uint
 	Players    MutexMap
 	NumPlayers int
 	Timer      int
@@ -19,20 +20,19 @@ type MutexMap struct {
 }
 
 func (mm MutexMap) MarshalJSON() ([]byte, error) {
-	var out struct {
-		Players []uint
-	}
+	Players := make([]uint, len(mm.Data))
 	for k := range mm.Data {
-		out.Players = append(out.Players, k)
+		Players = append(Players, k)
 	}
-	return json.Marshal(out)
+	return json.Marshal(Players)
 }
 
-func NewGame(host uint, players, timer int) Game {
+func NewGame(id, host uint, players, timer int) Game {
 	playerIds := make(map[uint]struct{})
 	playerIds[host] = struct{}{}
 
 	return Game{
+		Id: id,
 		Players: MutexMap{
 			Data:  playerIds,
 			Mutex: &sync.RWMutex{}},
