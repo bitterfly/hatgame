@@ -53,6 +53,17 @@ func (t *Token) CreateToken(id uint, duration time.Duration) (string, error) {
 	return signedToken, nil
 }
 
+func (t *Token) CheckToken(w http.ResponseWriter, r *http.Request) (*Payload, error) {
+	token := ExtractToken(r)
+	payload, err := t.VerifyToken(token)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		w.Write([]byte(fmt.Sprintf("%s", err)))
+		return nil, err
+	}
+	return payload, nil
+}
+
 func ExtractToken(r *http.Request) string {
 	bearToken := r.Header.Get("Authorization")
 	strArr := strings.Split(bearToken, " ")

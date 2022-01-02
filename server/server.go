@@ -7,9 +7,11 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/bitterfly/go-chaos/hatgame/database"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
+	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"golang.org/x/crypto/bcrypt"
@@ -17,15 +19,32 @@ import (
 )
 
 type Server struct {
-	Mux     *mux.Router
-	Server  *http.Server
-	DB      *gorm.DB
-	Token   Token
-	Cookies map[string]struct{}
+	Mux    *mux.Router
+	Server *http.Server
+	DB     *gorm.DB
+	Token  Token
+	Games  map[uint64]containers.Game
+	Mutex  *sync.RWMutex
 }
 
 func New(db *gorm.DB) *Server {
-	return &Server{DB: db, Mux: mux.NewRouter(), Token: NewToken(32), Cookies: make(map[string]struct{})}
+	return &Server{
+		DB:    db,
+		Mux:   mux.NewRouter(),
+		Token: NewToken(32),
+		Games: make(map[uint64]containers.Game),
+		Mutex: &sync.RWMutex{},
+	}
+}
+
+func (s *Server) getGameId() uint64 {
+	var m uint64
+	for k := range s.Games {
+		if k > m {
+			m = k
+		}
+	}
+	return m + 1
 }
 
 func (s *Server) Connect(address string) error {
@@ -34,6 +53,8 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
 	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("GET")
 	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
+	s.Mux.HandleFunc("/host", s.handleHost).Methods("POST")
+	s.Mux.HandleFunc("/game/{id}", s.handleJoin).Methods("POST")
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
 	log.Printf("Starting server on %s\n", address)
 
@@ -58,7 +79,7 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
-	user, err := ParseUser(r.Body)
+	user, err := containers.ParseUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -89,7 +110,6 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(token))
-	s.Cookies[token] = struct{}{}
 }
 
 func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
@@ -116,16 +136,16 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Bad id."))
 		return
 	}
-	id_u, err := strconv.ParseUint(id, 10, 64)
+	idU, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Id is not uint."))
 		return
 	}
-	user, err := database.GetUserByID(s.DB, uint(id_u))
+	user, err := database.GetUserByID(s.DB, uint(idU))
 	if err != nil {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("No user with id: %d.", id_u)))
+		w.Write([]byte(fmt.Sprintf("No user with id: %d.", idU)))
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -134,14 +154,12 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
-	token := ExtractToken(r)
-	payload, err := s.Token.VerifyToken(token)
+	payload, err := s.Token.CheckToken(w, r)
 	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		w.Write([]byte(fmt.Sprintf("%s", err)))
 		return
 	}
-	user, err := ParseUser(r.Body)
+
+	user, err := containers.ParseUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -161,4 +179,67 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
+}
+
+func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
+	payload, err := s.Token.CheckToken(w, r)
+	if err != nil {
+		return
+	}
+
+	host, err := containers.ParseHost(r.Body)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Bad user json."))
+		return
+	}
+
+	game := containers.NewGame(payload.Id, host.Players, host.Timer)
+	s.Mutex.Lock()
+	gameId := s.getGameId()
+	s.Games[gameId] = game
+	s.Mutex.Unlock()
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(fmt.Sprintf("%d", gameId)))
+}
+
+func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
+	payload, err := s.Token.CheckToken(w, r)
+	if err != nil {
+		return
+	}
+
+	vars := mux.Vars(r)
+	gameId, ok := vars["id"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Bad game id."))
+		return
+	}
+
+	gameIdU, err := strconv.ParseUint(gameId, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Game id is not uint."))
+		return
+	}
+
+	s.Mutex.RLock()
+	game, ok := s.Games[gameIdU]
+	s.Mutex.RUnlock()
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(fmt.Sprintf("Game with id: %d does not exists.", gameIdU)))
+		return
+	}
+
+	err = game.Put(game.NumPlayers, payload.Id)
+	if err != nil {
+		w.WriteHeader(http.StatusForbidden)
+		w.Write([]byte(fmt.Sprintf("Cannot join game with id %d: %s", gameIdU, err.Error())))
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(game)
 }
