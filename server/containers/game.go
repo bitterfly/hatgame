@@ -20,7 +20,7 @@ type MutexMap struct {
 }
 
 func (mm MutexMap) MarshalJSON() ([]byte, error) {
-	Players := make([]uint, len(mm.Data))
+	Players := make([]uint, 0, len(mm.Data))
 	for k := range mm.Data {
 		Players = append(Players, k)
 	}
@@ -29,6 +29,7 @@ func (mm MutexMap) MarshalJSON() ([]byte, error) {
 
 func NewGame(id, host uint, players, timer int) Game {
 	playerIds := make(map[uint]struct{})
+
 	playerIds[host] = struct{}{}
 
 	return Game{

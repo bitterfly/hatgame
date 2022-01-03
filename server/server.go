@@ -91,9 +91,6 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Wrong email or password."))
 		return
 	}
-	f, _ := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	fmt.Printf("o: %s\nh: %v\ndb: %v\n", user.Password, f, dbUser.Password)
-
 	if err := bcrypt.CompareHashAndPassword(dbUser.Password, []byte(user.Password)); err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		log.Printf("%s\n", err.Error())
@@ -172,7 +169,6 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Could not encrypt password."))
 		return
 	}
-	fmt.Printf("Password: %s Writing to database %d, %v\n", user.Password, payload.Id, newPassowrd)
 	err = database.UpdateUserPassword(s.DB, payload.Id, newPassowrd)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
