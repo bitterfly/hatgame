@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/gorilla/websocket"
 )
 
 type Game struct {
@@ -15,7 +17,7 @@ type Game struct {
 }
 
 type MutexMap struct {
-	Data  map[uint]struct{}
+	Data  map[uint]*websocket.Conn
 	Mutex *sync.RWMutex
 }
 
@@ -27,17 +29,16 @@ func (mm MutexMap) MarshalJSON() ([]byte, error) {
 	return json.Marshal(Players)
 }
 
-func NewGame(id, host uint, players, timer int) Game {
-	playerIds := make(map[uint]struct{})
+func NewGame(id, host uint, numPlayers, timer int) *Game {
+	playerIds := make(map[uint]*websocket.Conn)
+	playerIds[host] = nil
 
-	playerIds[host] = struct{}{}
-
-	return Game{
+	return &Game{
 		Id: id,
 		Players: MutexMap{
 			Data:  playerIds,
 			Mutex: &sync.RWMutex{}},
-		NumPlayers: players,
+		NumPlayers: numPlayers,
 		Timer:      timer,
 		Host:       host,
 	}
@@ -53,13 +54,35 @@ func (g *Game) Put(max int, id uint) error {
 		return fmt.Errorf("player already in game")
 	}
 	fmt.Printf("Adding player with id: %d\n", id)
-	g.Players.Data[id] = struct{}{}
+	g.Players.Data[id] = nil
 	return nil
 }
 
-func (g *Game) Get(id uint) bool {
+func (g *Game) PutWs(id uint, ws *websocket.Conn) error {
+	if _, ok := g.Players.Data[id]; !ok {
+		return fmt.Errorf("no such player in game")
+	}
+	g.Players.Data[id] = ws
+	return nil
+}
+
+func (g *Game) Get(id uint) (*websocket.Conn, bool) {
 	g.Players.Mutex.RLock()
 	defer g.Players.Mutex.RUnlock()
-	_, ok := g.Players.Data[id]
-	return ok
+	ws, ok := g.Players.Data[id]
+	return ws, ok
+}
+
+func (g *Game) PutAll(max int, id uint, ws *websocket.Conn) error {
+	g.Players.Mutex.Lock()
+	defer g.Players.Mutex.Unlock()
+	if len(g.Players.Data) == max {
+		return fmt.Errorf("too many players")
+	}
+	if _, ok := g.Players.Data[id]; ok {
+		return fmt.Errorf("player already in game")
+	}
+	fmt.Printf("Adding player with id: %d\n", id)
+	g.Players.Data[id] = ws
+	return nil
 }

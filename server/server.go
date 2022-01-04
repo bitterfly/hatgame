@@ -12,6 +12,7 @@ import (
 	"github.com/bitterfly/go-chaos/hatgame/database"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
+	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"github.com/gorilla/websocket"
@@ -20,12 +21,13 @@ import (
 )
 
 type Server struct {
-	Mux    *mux.Router
-	Server *http.Server
-	DB     *gorm.DB
-	Token  Token
-	Games  map[uint]containers.Game
-	Mutex  *sync.RWMutex
+	Mux      *mux.Router
+	Server   *http.Server
+	DB       *gorm.DB
+	Token    Token
+	Games    map[uint]*containers.Game
+	Mutex    *sync.RWMutex
+	Upgrader websocket.Upgrader
 }
 
 func New(db *gorm.DB) *Server {
@@ -33,8 +35,16 @@ func New(db *gorm.DB) *Server {
 		DB:    db,
 		Mux:   mux.NewRouter(),
 		Token: NewToken(32),
-		Games: make(map[uint]containers.Game),
+		Games: make(map[uint]*containers.Game),
 		Mutex: &sync.RWMutex{},
+		Upgrader: websocket.Upgrader{
+			ReadBufferSize:  1024,
+			WriteBufferSize: 1024,
+			//TODO: Also fix this origin.
+			CheckOrigin: func(r *http.Request) bool {
+				return true
+			},
+		},
 	}
 }
 
@@ -53,9 +63,10 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/login", s.handleUserLogin).Methods("POST")
 	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
 	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("GET")
+	// s.Mux.HandleFunc("/ws/{id}/{sessionToken}", s.handleWs).Methods("GET")
 	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
-	s.Mux.HandleFunc("/host", s.handleHost).Methods("POST")
-	s.Mux.HandleFunc("/game/{id}", s.handleJoin).Methods("POST")
+	s.Mux.HandleFunc("/host/{sessionToken}/{players}/{timer}", s.handleHost)
+	s.Mux.HandleFunc("/join/{sessionToken}/{id}", s.handleJoin)
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
 	log.Printf("Starting server on %s\n", address)
 
@@ -76,19 +87,48 @@ func (s *Server) Connect(address string) error {
 }
 
 func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
-	var upgrader = websocket.Upgrader{
-		ReadBufferSize:  1024,
-		WriteBufferSize: 1024,
-		//TODO: Also fix this origin.
-		CheckOrigin: func(r *http.Request) bool {
-			return true
-		},
+	log.Printf("Main, lol :D\n")
+}
+
+func (s *Server) handleWs(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	gameIds, ok := vars["id"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Bad id."))
+		return
+	}
+	gameId, err := strconv.ParseUint(gameIds, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Id is not uint."))
+		return
+	}
+	token, ok := vars["sessionToken"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Bad sessionToken."))
+		return
 	}
 
-	ws, err := upgrader.Upgrade(w, r, nil)
+	payload, err := s.Token.VerifyToken(token)
 	if err != nil {
 		return
 	}
+	fmt.Printf("%d, %d\n", gameId, payload.Id)
+
+	ws, err := s.Upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	s.Mutex.RLock()
+	if _, ok := s.Games[uint(gameId)]; !ok {
+		s.Mutex.RUnlock()
+		return
+	}
+
+	s.Mutex.RUnlock()
+
 	err = ws.WriteMessage(websocket.TextMessage, []byte("Hi!"))
 	if err != nil {
 		return
@@ -168,7 +208,7 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
-	payload, err := s.Token.CheckToken(w, r)
+	payload, err := s.Token.CheckTokenRequest(w, r)
 	if err != nil {
 		return
 	}
@@ -195,64 +235,91 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
-	payload, err := s.Token.CheckToken(w, r)
+	vars := mux.Vars(r)
+	players, err := utils.ParseInt(vars, "players")
+	if err != nil {
+		return
+	}
+	timer, err := utils.ParseInt(vars, "timer")
+	if err != nil {
+		return
+	}
+	payload, err := s.Token.CheckTokenVars(vars)
 	if err != nil {
 		return
 	}
 
-	host, err := containers.ParseHost(r.Body)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Bad user json."))
-		return
-	}
+	fmt.Printf("Players: %d, Timer: %d, HostId: %d\n", players, timer, payload.Id)
 
 	s.Mutex.Lock()
 	gameId := s.getGameId()
-	game := containers.NewGame(gameId, payload.Id, host.Players, host.Timer)
+	s.Mutex.Unlock()
+
+	game := containers.NewGame(gameId, payload.Id, players, timer)
+	ws, err := s.Upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	game.PutWs(payload.Id, ws)
+
+	s.Mutex.Lock()
 	s.Games[gameId] = game
 	s.Mutex.Unlock()
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(game)
+	msg := map[string]interface{}{
+		"type": "game",
+		"msg":  game,
+	}
+
+	msgData, err := json.Marshal(msg)
+	fmt.Printf("%s\n", string(msgData[:]))
+	if err != nil {
+		return
+	}
+	ws.WriteMessage(websocket.TextMessage, msgData)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
-	payload, err := s.Token.CheckToken(w, r)
-	if err != nil {
-		return
-	}
-
 	vars := mux.Vars(r)
-	gameId, ok := vars["id"]
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Bad game id."))
+
+	gameId, err := utils.ParseUint(vars, "id")
+	if err != nil {
 		return
 	}
 
-	gameIdU, err := strconv.ParseUint(gameId, 10, 64)
+	payload, err := s.Token.CheckTokenVars(vars)
 	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Game id is not uint."))
 		return
 	}
+	fmt.Printf("gameId: %d, userId: %d", gameId, payload.Id)
 
 	s.Mutex.RLock()
-	game, ok := s.Games[uint(gameIdU)]
+	game, ok := s.Games[uint(gameId)]
 	s.Mutex.RUnlock()
 	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte(fmt.Sprintf("Game with id: %d does not exists.", gameIdU)))
 		return
 	}
 
-	err = game.Put(game.NumPlayers, payload.Id)
+	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		w.WriteHeader(http.StatusForbidden)
-		w.Write([]byte(fmt.Sprintf("Cannot join game with id %d: %s", gameIdU, err.Error())))
 		return
 	}
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(game)
+
+	err = game.PutAll(game.NumPlayers, payload.Id, ws)
+	if err != nil {
+		return
+	}
+
+	msg := map[string]interface{}{
+		"type": "game",
+		"msg":  game,
+	}
+
+	msgData, err := json.Marshal(msg)
+	fmt.Printf("%s\n", string(msgData[:]))
+
+	if err != nil {
+		return
+	}
+	ws.WriteMessage(websocket.TextMessage, msgData)
 }

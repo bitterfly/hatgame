@@ -50,24 +50,24 @@ func Automigrate(db *gorm.DB) error {
 }
 
 func AddTestUsers(db *gorm.DB) []uint {
-	p1, _ := bcrypt.GenerateFromPassword([]byte("1234"), bcrypt.DefaultCost)
-	p2, _ := bcrypt.GenerateFromPassword([]byte("1337"), bcrypt.DefaultCost)
+	p1, _ := bcrypt.GenerateFromPassword([]byte("1"), bcrypt.DefaultCost)
+	p2, _ := bcrypt.GenerateFromPassword([]byte("2"), bcrypt.DefaultCost)
 	fmt.Printf("p2: %v\n", p2)
-	p3, _ := bcrypt.GenerateFromPassword([]byte("6969"), bcrypt.DefaultCost)
+	p3, _ := bcrypt.GenerateFromPassword([]byte("3"), bcrypt.DefaultCost)
 
 	users := []schema.User{
 		{
-			Email:    "dodo@gmail.com",
+			Email:    "1",
 			Password: p1,
 			Username: "dodo",
 		},
 		{
-			Email:    "foo@gmail.com",
+			Email:    "2",
 			Password: p2,
 			Username: "foo",
 		},
 		{
-			Email:    "bar@gmail.com",
+			Email:    "3",
 			Password: p3,
 			Username: "bar",
 		},

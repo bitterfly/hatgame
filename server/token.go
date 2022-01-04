@@ -53,7 +53,7 @@ func (t *Token) CreateToken(id uint, duration time.Duration) (string, error) {
 	return signedToken, nil
 }
 
-func (t *Token) CheckToken(w http.ResponseWriter, r *http.Request) (*Payload, error) {
+func (t *Token) CheckTokenRequest(w http.ResponseWriter, r *http.Request) (*Payload, error) {
 	token := ExtractToken(r)
 	payload, err := t.VerifyToken(token)
 	if err != nil {
@@ -96,5 +96,18 @@ func (t *Token) VerifyToken(token string) (*Payload, error) {
 		return nil, ErrInvalidToken
 	}
 
+	return payload, nil
+}
+
+func (t *Token) CheckTokenVars(vars map[string]string) (*Payload, error) {
+	token, ok := vars["sessionToken"]
+	if !ok {
+		return nil, fmt.Errorf("missing parameter for sessionTokne")
+	}
+
+	payload, err := t.VerifyToken(token)
+	if err != nil {
+		return nil, err
+	}
 	return payload, nil
 }
