@@ -14,6 +14,7 @@ import (
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
+	"github.com/gorilla/websocket"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -75,7 +76,23 @@ func (s *Server) Connect(address string) error {
 }
 
 func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Main :D\n")
+	var upgrader = websocket.Upgrader{
+		ReadBufferSize:  1024,
+		WriteBufferSize: 1024,
+		//TODO: Also fix this origin.
+		CheckOrigin: func(r *http.Request) bool {
+			return true
+		},
+	}
+
+	ws, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		return
+	}
+	err = ws.WriteMessage(websocket.TextMessage, []byte("Hi!"))
+	if err != nil {
+		return
+	}
 }
 
 func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
