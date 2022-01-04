@@ -86,3 +86,29 @@ func (g *Game) PutAll(max int, id uint, ws *websocket.Conn) error {
 	g.Players.Data[id] = ws
 	return nil
 }
+
+func (g Game) CreateMessage() ([]byte, error) {
+	msg := map[string]interface{}{
+		"type": "game",
+		"msg":  g,
+	}
+
+	return json.Marshal(msg)
+}
+
+func (g Game) WriteAll() error {
+	msg, err := g.CreateMessage()
+	if err != nil {
+		return err
+	}
+
+	g.Players.Mutex.RLock()
+	defer g.Players.Mutex.RUnlock()
+	for _, ws := range g.Players.Data {
+		err = ws.WriteMessage(websocket.TextMessage, msg)
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

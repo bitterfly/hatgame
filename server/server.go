@@ -266,17 +266,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	s.Games[gameId] = game
 	s.Mutex.Unlock()
 
-	msg := map[string]interface{}{
-		"type": "game",
-		"msg":  game,
-	}
-
-	msgData, err := json.Marshal(msg)
-	fmt.Printf("%s\n", string(msgData[:]))
+	err = game.WriteAll()
 	if err != nil {
 		return
 	}
-	ws.WriteMessage(websocket.TextMessage, msgData)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -310,16 +303,8 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	msg := map[string]interface{}{
-		"type": "game",
-		"msg":  game,
-	}
-
-	msgData, err := json.Marshal(msg)
-	fmt.Printf("%s\n", string(msgData[:]))
-
+	err = game.WriteAll()
 	if err != nil {
 		return
 	}
-	ws.WriteMessage(websocket.TextMessage, msgData)
 }
