@@ -322,7 +322,6 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	msg := &containers.Message{}
 	for {
 		err := ws.ReadJSON(&msg)
-		fmt.Printf("Msg: %v\n", msg)
 		if err != nil {
 			fmt.Printf("Error reading json")
 			break

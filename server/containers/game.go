@@ -113,7 +113,7 @@ func (g *Game) AddWord(id uint, word string) ([]byte, error) {
 	if _, ok := g.Players.Words[id]; !ok {
 		return nil, fmt.Errorf("no player with id %d", id)
 	}
-	if len(g.Players.Words) == 2 {
+	if len(g.Players.Words[id]) == 2 {
 		return g.CreateWordMessage(word, "done")
 	}
 	g.Players.Words[id] = append(g.Players.Words[id], word)
