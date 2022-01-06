@@ -113,9 +113,11 @@ func (g *Game) AddWord(id uint, word string) ([]byte, error) {
 	if _, ok := g.Players.Words[id]; !ok {
 		return nil, fmt.Errorf("no player with id %d", id)
 	}
+	// TODO: remove 2
 	if len(g.Players.Words[id]) == 2 {
-		return g.CreateWordMessage(word, "done")
+		return nil, fmt.Errorf("words limit reached")
 	}
+	fmt.Printf("Adding %s to %d\n", word, id)
 	g.Players.Words[id] = append(g.Players.Words[id], word)
 	return g.CreateWordMessage(word, "ok")
 }
@@ -128,6 +130,18 @@ func (g Game) CreateWordMessage(word string, status string) ([]byte, error) {
 	}
 
 	return json.Marshal(msg)
+}
+
+func (g *Game) CheckWordsFinished() bool {
+	g.Players.WordsMutex.RLock()
+	defer g.Players.WordsMutex.RUnlock()
+	for _, w := range g.Players.Words {
+		//TODO: remove 2 :D
+		if len(w) != 2 {
+			return false
+		}
+	}
+	return true
 }
 
 func (g Game) CreateGameMessage(status string) ([]byte, error) {

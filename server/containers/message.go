@@ -1,6 +1,7 @@
 package containers
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/gorilla/websocket"
@@ -15,7 +16,9 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint) error 
 	fmt.Printf("HandleMessage: %s, type: %s, msg: %s\n", msg, msg.Type, msg.Msg)
 	switch msg.Type {
 	case "word":
+		fmt.Printf("case word\n")
 		word := fmt.Sprintf("%s", msg.Msg)
+		fmt.Printf("Adding word\n")
 		resp, err := game.AddWord(id, word)
 		if err != nil {
 			return err
@@ -24,6 +27,17 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint) error 
 		err = ws.WriteMessage(websocket.TextMessage, resp)
 		if err != nil {
 			return fmt.Errorf("could not send message")
+		}
+
+		if game.CheckWordsFinished() {
+			resp := map[string]interface{}{
+				"type": "started",
+			}
+			respJson, err := json.Marshal(resp)
+			if err != nil {
+				return fmt.Errorf("could not send message to all")
+			}
+			game.WriteAll(respJson)
 		}
 	default:
 		fmt.Printf("Type: %s\n", msg.Type)
