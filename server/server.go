@@ -260,15 +260,26 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
-	game.PutWs(payload.Id, ws)
+	m, err := game.PutWs(payload.Id, ws)
 
 	s.Mutex.Lock()
 	s.Games[gameId] = game
 	s.Mutex.Unlock()
 
-	err = game.WriteAll()
+	err = game.WriteAll(m)
 	if err != nil {
 		return
+	}
+	msg := &containers.Message{}
+	for {
+		err := ws.ReadJSON(&msg)
+		if err != nil {
+			break
+		}
+		err = msg.HandleMessage(ws, game, payload.Id)
+		if err != nil {
+			log.Printf(err.Error())
+		}
 	}
 }
 
@@ -298,13 +309,27 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = game.PutAll(game.NumPlayers, payload.Id, ws)
+	m, err := game.PutAll(game.NumPlayers, payload.Id, ws)
 	if err != nil {
 		return
 	}
 
-	err = game.WriteAll()
+	err = game.WriteAll(m)
 	if err != nil {
 		return
+	}
+
+	msg := &containers.Message{}
+	for {
+		err := ws.ReadJSON(&msg)
+		fmt.Printf("Msg: %v\n", msg)
+		if err != nil {
+			fmt.Printf("Error reading json")
+			break
+		}
+		err = msg.HandleMessage(ws, game, payload.Id)
+		if err != nil {
+			log.Printf(err.Error())
+		}
 	}
 }
