@@ -31,6 +31,22 @@ type MutexMap struct {
 	WordsMutex *sync.RWMutex
 }
 
+func (p *Process) nextWord(start int) (string, int, bool) {
+	if len(p.Words) == len(p.GuessedWords) {
+		return "", -1, false
+	}
+
+	i := start
+	for _, ok := p.GuessedWords[p.Words[i]]; ok; {
+		i = (i + 1) % len(p.Words)
+	}
+	return p.Words[i], (i + 1) % len(p.Words), true
+}
+
+func (p *Process) guessWord(word string, id uint) {
+	p.GuessedWords[word] = id
+}
+
 func (mm MutexMap) MarshalJSON() ([]byte, error) {
 	Players := make([]uint, 0, len(mm.Ws))
 	for k := range mm.Ws {
@@ -233,11 +249,20 @@ func (g *Game) Start(id uint) {
 
 	// Pick storyteller
 	storyteller := 0
+	wordId := 0
 	for {
 		storyteller = storyteller % g.NumPlayers
+
+		story, nextId, found := process.nextWord(wordId)
+		wordId = nextId
+
+		if !found {
+			break
+		}
+
 		resp := map[string]interface{}{
 			"type": "story",
-			"msg":  "foo",
+			"msg":  story,
 		}
 		respJson, err := json.Marshal(resp)
 		if err != nil {
@@ -254,6 +279,8 @@ func (g *Game) Start(id uint) {
 		timer.Stop()
 		done <- struct{}{}
 
+		fmt.Printf("%d guessed word %s\n", process.Teams[storyteller], story)
+		process.guessWord(story, process.Teams[storyteller])
 		storyteller += 1
 	}
 }
