@@ -266,7 +266,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	s.Games[gameId] = game
 	s.Mutex.Unlock()
 
-	err = game.WriteAll(m)
+	err = game.NotifyAll(m)
 	if err != nil {
 		return
 	}
@@ -314,7 +314,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = game.WriteAll(m)
+	err = game.NotifyAll(m)
 	if err != nil {
 		return
 	}
