@@ -3,7 +3,9 @@ package containers
 import (
 	"encoding/json"
 	"fmt"
+	"math/rand"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
 )
@@ -14,6 +16,12 @@ type Game struct {
 	NumPlayers int
 	Timer      int
 	Host       uint
+}
+
+type Process struct {
+	Teams        []uint
+	GuessedWords map[string]uint
+	Words        []string
 }
 
 type MutexMap struct {
@@ -165,4 +173,91 @@ func (g Game) WriteAll(msg []byte) error {
 		}
 	}
 	return nil
+}
+
+func (g Game) StartProcess() *Process {
+	teams := make([]uint, 0, len(g.Players.Ws))
+	words := make([]string, 0)
+	g.Players.WsMutex.RLock()
+	for id, uwords := range g.Players.Words {
+		teams = append(teams, id)
+		for _, word := range uwords {
+			words = append(words, word)
+		}
+	}
+	g.Players.WsMutex.RUnlock()
+
+	rand.Shuffle(
+		len(teams),
+		func(i, j int) { teams[i], teams[j] = teams[j], teams[i] },
+	)
+
+	rand.Shuffle(
+		len(words),
+		func(i, j int) { words[i], words[j] = words[j], words[i] },
+	)
+
+	return &Process{
+		Teams: teams,
+		Words: words,
+	}
+
+}
+
+func (g *Game) Start(id uint) {
+	// Make teams.
+	process := g.StartProcess()
+
+	fmt.Printf("Teams: %v\nWords: %v\n", process.Teams, process.Words)
+
+	g.Players.WsMutex.RLock()
+	for i, id := range process.Teams {
+		resp := map[string]interface{}{
+			"type":    "started",
+			"partner": process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
+		}
+
+		respJson, err := json.Marshal(resp)
+		if err != nil {
+			fmt.Printf("Error when marshalling")
+		}
+		ws, _ := g.Players.Ws[id]
+		err = ws.WriteMessage(websocket.TextMessage, respJson)
+		if err != nil {
+			fmt.Printf("Error when sending message")
+		}
+	}
+	g.Players.WsMutex.RUnlock()
+	// Send info about teams and game start
+
+	// Pick storyteller
+	storyteller := 0
+	for {
+		storyteller = storyteller % g.NumPlayers
+		fmt.Printf("Storyteller: %d\n", process.Teams[storyteller])
+		timer := time.NewTicker(1 * time.Second)
+		done := make(chan struct{})
+		go tick(g, done, timer)
+		time.Sleep(5 * time.Second)
+		timer.Stop()
+		done <- struct{}{}
+
+		storyteller += 1
+	}
+	// Select word at random
+	// Tick timer
+
+}
+
+func tick(g *Game, done chan struct{}, timer *time.Ticker) {
+	i := 0
+	for {
+		select {
+		case <-done:
+			return
+		case <-timer.C:
+			fmt.Printf("Tick: %d\n", i)
+			i += 1
+		}
+	}
 }
