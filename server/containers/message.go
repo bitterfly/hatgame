@@ -12,17 +12,15 @@ type Message struct {
 }
 
 func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint) error {
-	fmt.Printf("HandleMessage: %s, type: %s, msg: %s\n", msg, msg.Type, msg.Msg)
+	timerDone := make(chan struct{})
+	fmt.Printf("HandleMessage: %s\n", msg)
 	switch msg.Type {
 	case "word":
-		fmt.Printf("case word\n")
 		word := fmt.Sprintf("%s", msg.Msg)
-		fmt.Printf("Adding word\n")
 		resp, err := game.AddWord(id, word)
 		if err != nil {
 			return err
 		}
-		fmt.Printf("Writing message: %s\n", resp)
 		err = ws.WriteMessage(websocket.TextMessage, resp)
 		if err != nil {
 			return fmt.Errorf("could not send message")
@@ -32,7 +30,8 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint) error 
 			Start(id, game)
 		}
 	case "ready":
-		fmt.Printf("Storyteller %d is ready", id)
+		fmt.Printf("Storyteller %d is ready\n", id)
+		MakeTurn(id, game, timerDone)
 	default:
 		fmt.Printf("Type: %s\n", msg.Type)
 	}
