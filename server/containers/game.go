@@ -22,6 +22,8 @@ type Process struct {
 	Teams        []uint
 	GuessedWords map[string]uint
 	Words        []string
+	WordId       int
+	Storyteller  int
 }
 
 type MutexMap struct {
@@ -217,72 +219,94 @@ func (g Game) StartProcess() *Process {
 		Teams:        teams,
 		Words:        words,
 		GuessedWords: make(map[string]uint),
+		Storyteller:  0,
+		WordId:       0,
 	}
 
 }
 
-func (g *Game) Start(id uint) {
-	// Make teams.
-	process := g.StartProcess()
-
-	fmt.Printf("Teams: %v\nWords: %v\n", process.Teams, process.Words)
-
+func NotifyGameStarted(g *Game, p *Process) error {
 	g.Players.WsMutex.RLock()
-	for i, id := range process.Teams {
+	for i, id := range p.Teams {
 		resp := map[string]interface{}{
-			"type": "started",
-			"msg":  process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
+			"type": "team",
+			"msg":  p.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
 		}
 
 		respJson, err := json.Marshal(resp)
 		if err != nil {
-			fmt.Printf("Error when marshalling")
+			return fmt.Errorf("error when marshalling team message")
 		}
 		ws, _ := g.Players.Ws[id]
 		err = ws.WriteMessage(websocket.TextMessage, respJson)
 		if err != nil {
-			fmt.Printf("Error when sending message")
+			fmt.Errorf("error when sending team message")
 		}
 	}
 	g.Players.WsMutex.RUnlock()
-	// Send info about teams and game start
+	return nil
+}
 
-	// Pick storyteller
-	storyteller := 0
-	wordId := 0
-	for {
-		storyteller = storyteller % g.NumPlayers
-
-		story, nextId, found := process.nextWord(wordId)
-		wordId = nextId
-
-		if !found {
-			break
-		}
-
-		resp := map[string]interface{}{
-			"type": "story",
-			"msg":  story,
-		}
-		respJson, err := json.Marshal(resp)
-		if err != nil {
-			fmt.Printf("Error when marshalling")
-		}
-		ws, _ := g.Players.Ws[process.Teams[storyteller]]
-		err = ws.WriteMessage(websocket.TextMessage, respJson)
-
-		fmt.Printf("Storyteller: %d\n", process.Teams[storyteller])
-		timer := time.NewTicker(1 * time.Second)
-		done := make(chan struct{})
-		go tick(g, done, timer)
-		time.Sleep(time.Duration(g.Timer) * time.Second)
-		timer.Stop()
-		done <- struct{}{}
-
-		fmt.Printf("%d guessed word %s\n", process.Teams[storyteller], story)
-		process.guessWord(story, process.Teams[storyteller])
-		storyteller += 1
+func NotifyStoryteller(g *Game, p *Process) error {
+	resp := map[string]interface{}{
+		"type": "start",
 	}
+	respJson, err := json.Marshal(resp)
+	if err != nil {
+		return fmt.Errorf("error when marshalling start message")
+	}
+	g.Players.WsMutex.RLock()
+	ws, _ := g.Players.Ws[p.Teams[p.Storyteller]]
+	g.Players.WsMutex.RUnlock()
+	err = ws.WriteMessage(websocket.TextMessage, respJson)
+	if err != nil {
+		fmt.Errorf("error when sending team message")
+	}
+	return nil
+}
+
+func Start(id uint, game *Game) error {
+	process := game.StartProcess()
+	fmt.Printf("Teams: %v\nWords: %v\n", process.Teams, process.Words)
+	err := NotifyGameStarted(game, process)
+	if err != nil {
+		return err
+	}
+	return NotifyStoryteller(game, process)
+
+	// for {
+	// 	process.storyteller = process.storyteller % game.NumPlayers
+
+	// 	story, nextId, found := process.nextWord(process.nextWord)
+	// 	process.nextWord = nextId
+
+	// 	if !found {
+	// 		break
+	// 	}
+
+	// 	resp := map[string]interface{}{
+	// 		"type": "story",
+	// 		"msg":  story,
+	// 	}
+	// 	respJson, err := json.Marshal(resp)
+	// 	if err != nil {
+	// 		fmt.Printf("Error when marshalling")
+	// 	}
+	// 	ws, _ := g.Players.Ws[process.Teams[process.Storyteller]]
+	// 	err = ws.WriteMessage(websocket.TextMessage, respJson)
+
+	// 	fmt.Printf("Storyteller: %d\n", process.Teams[process.Storyteller])
+	// 	timer := time.NewTicker(1 * time.Second)
+	// 	done := make(chan struct{})
+	// 	go tick(g, done, timer)
+	// 	time.Sleep(time.Duration(g.Timer) * time.Second)
+	// 	timer.Stop()
+	// 	done <- struct{}{}
+
+	// 	fmt.Printf("%d guessed word %s\n", process.Teams[process.Storyteller], story)
+	// 	process.guessWord(story, process.Teams[process.Storyteller])
+	// 	process.Storyteller += 1
+	// }
 }
 
 func tick(g *Game, done chan struct{}, timer *time.Ticker) {

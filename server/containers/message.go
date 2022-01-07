@@ -29,8 +29,10 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint) error 
 		}
 
 		if game.CheckWordsFinished() {
-			game.Start(id)
+			Start(id, game)
 		}
+	case "ready":
+		fmt.Printf("Storyteller %d is ready", id)
 	default:
 		fmt.Printf("Type: %s\n", msg.Type)
 	}
