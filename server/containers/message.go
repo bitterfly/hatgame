@@ -11,8 +11,7 @@ type Message struct {
 	Msg  interface{}
 }
 
-func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint) error {
-	timerDone := make(chan struct{})
+func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint, wordGuessed chan struct{}) error {
 	fmt.Printf("HandleMessage: %s\n", msg)
 	switch msg.Type {
 	case "word":
@@ -31,7 +30,16 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint) error 
 		}
 	case "ready":
 		fmt.Printf("Storyteller %d is ready\n", id)
-		MakeTurn(id, game, timerDone)
+		game.Process.TimerLeft = game.Timer
+		fmt.Printf("Timer is %d\n", game.Process.TimerLeft)
+		MakeTurn(id, game, wordGuessed)
+	case "guess":
+		word := fmt.Sprintf("%s", msg.Msg)
+		wordGuessed <- struct{}{}
+		fmt.Printf("Guessed word %s\n", word)
+		game.Process.guessWord(word)
+		fmt.Printf("Timer is %d\n", game.Process.TimerLeft)
+		MakeTurn(id, game, wordGuessed)
 	default:
 		fmt.Printf("Type: %s\n", msg.Type)
 	}
