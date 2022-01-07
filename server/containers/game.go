@@ -198,8 +198,9 @@ func (g Game) StartProcess() *Process {
 	)
 
 	return &Process{
-		Teams: teams,
-		Words: words,
+		Teams:        teams,
+		Words:        words,
+		GuessedWords: make(map[string]uint),
 	}
 
 }
@@ -213,8 +214,8 @@ func (g *Game) Start(id uint) {
 	g.Players.WsMutex.RLock()
 	for i, id := range process.Teams {
 		resp := map[string]interface{}{
-			"type":    "started",
-			"partner": process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
+			"type": "started",
+			"msg":  process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
 		}
 
 		respJson, err := json.Marshal(resp)
@@ -234,30 +235,48 @@ func (g *Game) Start(id uint) {
 	storyteller := 0
 	for {
 		storyteller = storyteller % g.NumPlayers
+		resp := map[string]interface{}{
+			"type": "story",
+			"msg":  "foo",
+		}
+		respJson, err := json.Marshal(resp)
+		if err != nil {
+			fmt.Printf("Error when marshalling")
+		}
+		ws, _ := g.Players.Ws[process.Teams[storyteller]]
+		err = ws.WriteMessage(websocket.TextMessage, respJson)
+
 		fmt.Printf("Storyteller: %d\n", process.Teams[storyteller])
 		timer := time.NewTicker(1 * time.Second)
 		done := make(chan struct{})
 		go tick(g, done, timer)
-		time.Sleep(5 * time.Second)
+		time.Sleep(time.Duration(g.Timer) * time.Second)
 		timer.Stop()
 		done <- struct{}{}
 
 		storyteller += 1
 	}
-	// Select word at random
-	// Tick timer
-
 }
 
 func tick(g *Game, done chan struct{}, timer *time.Ticker) {
-	i := 0
+	i := g.Timer
 	for {
 		select {
 		case <-done:
 			return
 		case <-timer.C:
 			fmt.Printf("Tick: %d\n", i)
-			i += 1
+			i -= 1
+			resp := map[string]interface{}{
+				"type": "tick",
+				"msg":  i,
+			}
+			respJson, err := json.Marshal(resp)
+			if err != nil {
+				fmt.Printf("Error when marshalling")
+			}
+			g.WriteAll(respJson)
+
 		}
 	}
 }
