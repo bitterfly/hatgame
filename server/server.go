@@ -259,17 +259,24 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Printf("Players: %d, Words: %d, Timer: %d, HostId: %d\n", players, numWords, timer, payload.Id)
 
+	user, err := database.GetUserByID(s.DB, payload.Id)
+	if err != nil {
+		fmt.Printf("Could not get user info for user: %d\n", payload.Id)
+		return
+	}
+
 	s.Mutex.Lock()
 	gameId := s.getGameId()
 	s.Mutex.Unlock()
 
-	game := containers.NewGame(gameId, payload.Id, players, numWords, timer)
+	game := containers.NewGame(gameId, *user, players, numWords, timer)
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
 	m, err := game.PutWs(payload.Id, ws)
 
+	fmt.Printf("Sending: %s\n", m)
 	s.Mutex.Lock()
 	s.Games[gameId] = game
 	s.Mutex.Unlock()
@@ -287,9 +294,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 		go msg.HandleMessage(ws, game, payload.Id, wordGuessed)
-		// if err != nil {
-		// 	log.Printf(err.Error())
-		// }
 	}
 }
 
@@ -307,6 +311,11 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 	fmt.Printf("gameId: %d, userId: %d", gameId, payload.Id)
 
+	user, err := database.GetUserByID(s.DB, payload.Id)
+	if err != nil {
+		return
+	}
+
 	s.Mutex.RLock()
 	game, ok := s.Games[uint(gameId)]
 	s.Mutex.RUnlock()
@@ -319,11 +328,12 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	m, err := game.PutAll(game.NumPlayers, payload.Id, ws)
+	m, err := game.PutAll(game.NumPlayers, *user, ws)
 	if err != nil {
 		return
 	}
 
+	fmt.Printf("Sending: %s\n", m)
 	err = game.NotifyAll(m)
 	if err != nil {
 		return

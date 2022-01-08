@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/gorilla/websocket"
 )
 
@@ -35,6 +36,15 @@ type MutexMap struct {
 	Words      map[uint][]string
 	WsMutex    *sync.RWMutex
 	WordsMutex *sync.RWMutex
+	Users      map[uint]schema.User
+}
+
+func (mm MutexMap) MarshalJSON() ([]byte, error) {
+	Players := make([]schema.User, 0, len(mm.Users))
+	for _, v := range mm.Users {
+		Players = append(Players, v)
+	}
+	return json.Marshal(Players)
 }
 
 func (p *Process) nextWord() (string, bool) {
@@ -63,32 +73,27 @@ func (p *Process) guessWord(word string) {
 	p.GuessedWords[word] = p.Teams[p.Storyteller]
 }
 
-func (mm MutexMap) MarshalJSON() ([]byte, error) {
-	Players := make([]uint, 0, len(mm.Ws))
-	for k := range mm.Ws {
-		Players = append(Players, k)
-	}
-	return json.Marshal(Players)
-}
-
-func NewGame(id, host uint, numPlayers, numWords, timer int) *Game {
+func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Game {
 	ws := make(map[uint]*websocket.Conn)
-	ws[host] = nil
+	ws[host.ID] = nil
 	words := make(map[uint][]string)
-	words[host] = make([]string, 0)
+	words[host.ID] = make([]string, 0)
+	users := make(map[uint]schema.User)
+	users[host.ID] = host
 
 	return &Game{
-		Id: id,
+		Id: gameId,
 		Players: MutexMap{
 			Ws:         ws,
 			Words:      words,
 			WsMutex:    &sync.RWMutex{},
-			WordsMutex: &sync.RWMutex{}},
+			WordsMutex: &sync.RWMutex{},
+			Users:      users},
 		Process:    Process{},
 		NumPlayers: numPlayers,
 		NumWords:   numWords,
 		Timer:      timer,
-		Host:       host,
+		Host:       host.ID,
 	}
 }
 
@@ -129,20 +134,21 @@ func (g *Game) Get(id uint) (*websocket.Conn, bool) {
 	return ws, ok
 }
 
-func (g *Game) PutAll(max int, id uint, ws *websocket.Conn) ([]byte, error) {
+func (g *Game) PutAll(max int, user schema.User, ws *websocket.Conn) ([]byte, error) {
 	g.Players.WsMutex.Lock()
 	defer g.Players.WsMutex.Unlock()
 	if len(g.Players.Ws) == max {
 		return nil, fmt.Errorf("too many players")
 	}
-	if _, ok := g.Players.Ws[id]; ok {
+	if _, ok := g.Players.Ws[user.ID]; ok {
 		return nil, fmt.Errorf("player already in game")
 	}
-	fmt.Printf("Adding player with id: %d\n", id)
-	g.Players.Ws[id] = ws
+	fmt.Printf("Adding player with id: %d\n", user.ID)
+	g.Players.Ws[user.ID] = ws
 	g.Players.WordsMutex.Lock()
 	defer g.Players.WordsMutex.Unlock()
-	g.Players.Words[id] = make([]string, 0)
+	g.Players.Words[user.ID] = make([]string, 0)
+	g.Players.Users[user.ID] = user
 	if len(g.Players.Ws) == g.NumPlayers {
 		return g.CreateGameMessage("done")
 	}
@@ -353,7 +359,11 @@ func tick(g *Game, timerDone chan struct{}, wordGuessed chan struct{}, timer *ti
 		case <-wordGuessed:
 			fmt.Printf("Word guessed. Stopping timer.\n")
 			return
-		case <-timer.C:
+		case _, ok := <-timer.C:
+			// TODO fix timers
+			if !ok {
+				return
+			}
 			i -= 1
 			g.Process.TimerLeft -= 1
 			fmt.Printf("Tick: %d\n", i)

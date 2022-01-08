@@ -34,6 +34,7 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint, wordGu
 		fmt.Printf("Timer is %d\n", game.Process.TimerLeft)
 		MakeTurn(id, game, wordGuessed)
 	case "guess":
+		// TODO: maybe detach the timer stopping and the next word
 		word := fmt.Sprintf("%s", msg.Msg)
 		wordGuessed <- struct{}{}
 		fmt.Printf("Guessed word %s\n", word)
