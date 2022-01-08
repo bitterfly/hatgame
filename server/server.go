@@ -161,8 +161,13 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	resp := map[string]interface{}{
+		"sessionToken": token,
+		"user":         dbUser,
+	}
+
 	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(token))
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
