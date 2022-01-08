@@ -283,19 +283,13 @@ func NotifyGameEnded(game *Game) error {
 func NotifyStoryteller(game *Game) error {
 	resp := map[string]interface{}{
 		"type": "start",
+		"msg":  game.Process.Teams[game.Process.Storyteller],
 	}
 	respJson, err := json.Marshal(resp)
 	if err != nil {
 		return fmt.Errorf("error when marshalling start message: %w", err)
 	}
-	game.Players.WsMutex.RLock()
-	ws, _ := game.Players.Ws[game.Process.Teams[game.Process.Storyteller]]
-	game.Players.WsMutex.RUnlock()
-	err = ws.WriteMessage(websocket.TextMessage, respJson)
-	if err != nil {
-		return fmt.Errorf("error when sending team message: %w", err)
-	}
-	return nil
+	return game.NotifyAll(respJson)
 }
 
 func Start(id uint, game *Game) error {
