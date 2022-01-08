@@ -63,9 +63,8 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/login", s.handleUserLogin).Methods("POST")
 	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
 	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("GET")
-	// s.Mux.HandleFunc("/ws/{id}/{sessionToken}", s.handleWs).Methods("GET")
 	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
-	s.Mux.HandleFunc("/host/{sessionToken}/{players}/{timer}", s.handleHost)
+	s.Mux.HandleFunc("/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/join/{sessionToken}/{id}", s.handleJoin)
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
 	log.Printf("Starting server on %s\n", address)
@@ -240,6 +239,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		return
 	}
+	numWords, err := utils.ParseInt(vars, "numWords")
+	if err != nil {
+		return
+	}
 	timer, err := utils.ParseInt(vars, "timer")
 	if err != nil {
 		return
@@ -249,13 +252,13 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Players: %d, Timer: %d, HostId: %d\n", players, timer, payload.Id)
+	fmt.Printf("Players: %d, Words: %d, Timer: %d, HostId: %d\n", players, numWords, timer, payload.Id)
 
 	s.Mutex.Lock()
 	gameId := s.getGameId()
 	s.Mutex.Unlock()
 
-	game := containers.NewGame(gameId, payload.Id, players, timer)
+	game := containers.NewGame(gameId, payload.Id, players, numWords, timer)
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return

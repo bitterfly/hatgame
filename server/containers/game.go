@@ -12,21 +12,22 @@ import (
 
 type Game struct {
 	Id         uint
-	Players    MutexMap
-	Process    Process `json:-`
+	Host       uint
 	NumPlayers int
 	Timer      int
-	Host       uint
+	NumWords   int
+	Players    MutexMap
+	Process    Process `json:"-"`
 }
 
 type Process struct {
-	Teams        []uint
-	GuessedWords map[string]uint
-	Words        []string
 	WordId       int
 	Storyteller  int
-	Mutex        *sync.RWMutex
 	TimerLeft    int
+	Teams        []uint
+	Words        []string
+	GuessedWords map[string]uint
+	Mutex        *sync.RWMutex
 }
 
 type MutexMap struct {
@@ -70,7 +71,7 @@ func (mm MutexMap) MarshalJSON() ([]byte, error) {
 	return json.Marshal(Players)
 }
 
-func NewGame(id, host uint, numPlayers, timer int) *Game {
+func NewGame(id, host uint, numPlayers, numWords, timer int) *Game {
 	ws := make(map[uint]*websocket.Conn)
 	ws[host] = nil
 	words := make(map[uint][]string)
@@ -85,6 +86,7 @@ func NewGame(id, host uint, numPlayers, timer int) *Game {
 			WordsMutex: &sync.RWMutex{}},
 		Process:    Process{},
 		NumPlayers: numPlayers,
+		NumWords:   numWords,
 		Timer:      timer,
 		Host:       host,
 	}
@@ -153,8 +155,7 @@ func (g *Game) AddWord(id uint, word string) ([]byte, error) {
 	if _, ok := g.Players.Words[id]; !ok {
 		return nil, fmt.Errorf("no player with id %d", id)
 	}
-	// TODO: remove 2
-	if len(g.Players.Words[id]) == 2 {
+	if len(g.Players.Words[id]) == g.NumWords {
 		return nil, fmt.Errorf("words limit reached")
 	}
 	fmt.Printf("Adding %s to %d\n", word, id)
@@ -176,8 +177,7 @@ func (g *Game) CheckWordsFinished() bool {
 	g.Players.WordsMutex.RLock()
 	defer g.Players.WordsMutex.RUnlock()
 	for _, w := range g.Players.Words {
-		//TODO: remove 2 :D
-		if len(w) != 2 {
+		if len(w) != g.NumWords {
 			return false
 		}
 	}
@@ -251,12 +251,12 @@ func NotifyGameStarted(g *Game) error {
 
 		respJson, err := json.Marshal(resp)
 		if err != nil {
-			return fmt.Errorf("error when marshalling team message")
+			return fmt.Errorf("error when marshalling team message: %w", err)
 		}
 		ws, _ := g.Players.Ws[id]
 		err = ws.WriteMessage(websocket.TextMessage, respJson)
 		if err != nil {
-			fmt.Errorf("error when sending team message")
+			return fmt.Errorf("error when sending team message: %w", err)
 		}
 	}
 	g.Players.WsMutex.RUnlock()
@@ -280,14 +280,14 @@ func NotifyStoryteller(game *Game) error {
 	}
 	respJson, err := json.Marshal(resp)
 	if err != nil {
-		return fmt.Errorf("error when marshalling start message")
+		return fmt.Errorf("error when marshalling start message: %w", err)
 	}
 	game.Players.WsMutex.RLock()
 	ws, _ := game.Players.Ws[game.Process.Teams[game.Process.Storyteller]]
 	game.Players.WsMutex.RUnlock()
 	err = ws.WriteMessage(websocket.TextMessage, respJson)
 	if err != nil {
-		fmt.Errorf("error when sending team message")
+		return fmt.Errorf("error when sending team message: %w", err)
 	}
 	return nil
 }
