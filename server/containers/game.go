@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -201,6 +202,7 @@ func (g Game) CreateGameMessage(status string) ([]byte, error) {
 }
 
 func (g Game) NotifyAll(msg []byte) error {
+	fmt.Printf("Writing: %s\n", msg)
 
 	g.Players.WsMutex.RLock()
 	defer g.Players.WsMutex.RUnlock()
@@ -269,13 +271,49 @@ func NotifyGameStarted(g *Game) error {
 	return nil
 }
 
+type Team struct {
+	First  uint
+	Second uint
+	Score  int
+}
+
+func makeTeam(a, b uint) Team {
+	return Team{First: a, Second: b}
+}
+
 func NotifyGameEnded(game *Game) error {
+	fmt.Printf("Notify game end\n")
+
+	game.Process.Mutex.RLock()
+	defer game.Process.Mutex.RUnlock()
+
+	rev := make(map[uint]int)
+	for _, id := range game.Process.GuessedWords {
+		rev[id] += 1
+	}
+	teams := int(game.NumPlayers / 2.0)
+	res := make([]Team, 0, teams)
+	for i := 0; i < teams; i++ {
+		team := makeTeam(
+			game.Process.Teams[i],
+			game.Process.Teams[(i+teams)%game.NumPlayers],
+		)
+		team.Score =
+			rev[team.First] + rev[team.Second]
+		res = append(res, team)
+	}
+
+	sort.SliceStable(res, func(i, j int) bool {
+		return res[i].Score > res[j].Score
+	})
+
 	resp := map[string]interface{}{
 		"type": "end",
+		"msg":  res,
 	}
 	respJson, err := json.Marshal(resp)
 	if err != nil {
-		return fmt.Errorf("error when marshalling start message")
+		return fmt.Errorf("error when marshalling end message: %w", err)
 	}
 	return game.NotifyAll(respJson)
 }

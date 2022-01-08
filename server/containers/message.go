@@ -32,15 +32,21 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint, wordGu
 		fmt.Printf("Storyteller %d is ready\n", id)
 		game.Process.TimerLeft = game.Timer
 		fmt.Printf("Timer is %d\n", game.Process.TimerLeft)
-		MakeTurn(id, game, wordGuessed)
+		err := MakeTurn(id, game, wordGuessed)
+		if err != nil {
+			fmt.Printf("%s\n", err)
+		}
 	case "guess":
 		// TODO: maybe detach the timer stopping and the next word
 		word := fmt.Sprintf("%s", msg.Msg)
-		wordGuessed <- struct{}{}
-		fmt.Printf("Guessed word %s\n", word)
 		game.Process.guessWord(word)
+		fmt.Printf("Guessed word %s\n", word)
+		wordGuessed <- struct{}{}
 		fmt.Printf("Timer is %d\n", game.Process.TimerLeft)
-		MakeTurn(id, game, wordGuessed)
+		err := MakeTurn(id, game, wordGuessed)
+		if err != nil {
+			fmt.Printf("%s\n", err)
+		}
 	default:
 		fmt.Printf("Type: %s\n", msg.Type)
 	}
