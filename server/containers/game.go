@@ -37,7 +37,6 @@ type MutexMap struct {
 }
 
 func (p *Process) nextWord() (string, bool) {
-	fmt.Printf("Guessed: %v, Words: %v, wordId: %d\n", p.GuessedWords, p.Words, p.WordId)
 	p.Mutex.RLock()
 	defer p.Mutex.RUnlock()
 	if len(p.Words) == len(p.GuessedWords) {
@@ -45,9 +44,13 @@ func (p *Process) nextWord() (string, bool) {
 	}
 
 	i := p.WordId
-	for _, ok := p.GuessedWords[p.Words[i]]; ok; {
-		fmt.Printf("i: %d - %s\n", i, p.Words[i])
-		i = (i + 1) % len(p.Words)
+	for {
+		_, ok := p.GuessedWords[p.Words[i]]
+		if !ok {
+			break
+		} else {
+			i = (i + 1) % len(p.Words)
+		}
 	}
 	p.WordId = (i + 1) % len(p.Words)
 	return p.Words[i], true
