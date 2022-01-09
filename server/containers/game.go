@@ -25,7 +25,6 @@ type Game struct {
 type Process struct {
 	WordId       int
 	Storyteller  int
-	TimerLeft    int
 	Teams        []uint
 	Words        []string
 	GuessedWords map[string]uint
@@ -244,7 +243,6 @@ func (g *Game) StartProcess() {
 		Mutex:        &sync.RWMutex{},
 		Storyteller:  0,
 		WordId:       0,
-		TimerLeft:    g.Timer,
 	}
 
 }
@@ -357,23 +355,31 @@ func NotifyWord(game *Game, story string) error {
 	return ws.WriteMessage(websocket.TextMessage, respJson)
 }
 
-func MakeTurn(id uint, game *Game, wordGuessed chan struct{}) error {
+func PickWord(game *Game) (bool, error) {
 	story, found := game.Process.nextWord()
 	fmt.Printf("Story chosen: %s\n", story)
 
 	if !found {
-		return NotifyGameEnded(game)
+		return false, NotifyGameEnded(game)
 	}
 
 	err := NotifyWord(game, story)
 	if err != nil {
+		return true, err
+	}
+	return true, nil
+}
+
+func MakeTurn(id uint, game *Game, timerGameEnd chan struct{}) error {
+	ok, err := PickWord(game)
+	if !ok || err != nil {
 		return err
 	}
 
 	timer := time.NewTicker(1 * time.Second)
 	timerDone := make(chan struct{})
-	go tick(game, timerDone, wordGuessed, timer)
-	time.Sleep(time.Duration(game.Process.TimerLeft) * time.Second)
+	go tick(game, timerDone, timerGameEnd, timer)
+	time.Sleep(time.Duration(game.Timer) * time.Second)
 	timer.Stop()
 	timerDone <- struct{}{}
 
@@ -381,23 +387,21 @@ func MakeTurn(id uint, game *Game, wordGuessed chan struct{}) error {
 	return NotifyStoryteller(game)
 }
 
-func tick(g *Game, timerDone chan struct{}, wordGuessed chan struct{}, timer *time.Ticker) {
-	i := g.Process.TimerLeft
+func tick(game *Game, timerDone chan struct{}, timerGameEnd chan struct{}, timer *time.Ticker) {
+	i := game.Timer
 	for {
 		select {
 		case <-timerDone:
 			fmt.Printf("Timer done\n")
 			return
-		case <-wordGuessed:
-			fmt.Printf("Word guessed. Stopping timer.\n")
+		case <-timerGameEnd:
+			fmt.Printf("Game end done\n")
 			return
 		case _, ok := <-timer.C:
-			// TODO fix timers
 			if !ok {
 				return
 			}
 			i -= 1
-			g.Process.TimerLeft -= 1
 			fmt.Printf("Tick: %d\n", i)
 			resp := map[string]interface{}{
 				"type": "tick",
@@ -407,7 +411,7 @@ func tick(g *Game, timerDone chan struct{}, wordGuessed chan struct{}, timer *ti
 			if err != nil {
 				fmt.Printf("Error when marshalling")
 			}
-			g.NotifyAll(respJson)
+			game.NotifyAll(respJson)
 		}
 	}
 }

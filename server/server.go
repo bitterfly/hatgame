@@ -286,14 +286,14 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wordGuessed := make(chan struct{})
+	timerGameEnd := make(chan struct{})
 	msg := &containers.Message{}
 	for {
 		err := ws.ReadJSON(&msg)
 		if err != nil {
 			break
 		}
-		go msg.HandleMessage(ws, game, payload.Id, wordGuessed)
+		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd)
 	}
 }
 
@@ -339,7 +339,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wordGuessed := make(chan struct{})
+	timerGameEnd := make(chan struct{})
 	msg := &containers.Message{}
 	for {
 		err := ws.ReadJSON(&msg)
@@ -347,6 +347,6 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("Error reading json")
 			break
 		}
-		go msg.HandleMessage(ws, game, payload.Id, wordGuessed)
+		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd)
 	}
 }
