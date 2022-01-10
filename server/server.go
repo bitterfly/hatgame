@@ -62,8 +62,8 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/", s.handleMain)
 	s.Mux.HandleFunc("/login", s.handleUserLogin).Methods("POST")
 	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
-	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("GET")
-	s.Mux.HandleFunc("/game/id/{id}", s.handleGameShow).Methods("GET")
+	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("POST")
+	s.Mux.HandleFunc("/game/id/{id}", s.handleGameShow).Methods("POST")
 	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
 	s.Mux.HandleFunc("/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/join/{sessionToken}/{id}", s.handleJoin)
@@ -186,6 +186,7 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Bad id."))
 		return
 	}
+
 	idU, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
@@ -194,10 +195,12 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.Mutex.RLock()
+	defer s.Mutex.RUnlock()
 	if _, ok := s.Games[uint(idU)]; !ok {
 		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
+
 	w.WriteHeader(http.StatusOK)
 }
 
