@@ -19,83 +19,58 @@ type Game struct {
 	NumPlayers int
 	Timer      int
 	NumWords   int
-	Players    MutexMap
+	Players    Players
 	Process    Process `json:"-"`
 }
 
-type Process struct {
-	WordId       int
-	Storyteller  int
-	Teams        []uint
-	Words        []string
-	GuessedWords map[string]uint
-	Mutex        *sync.RWMutex
+type Players struct {
+	Ws          map[uint]*websocket.Conn
+	WordsByUser map[uint]map[string]struct{}
+	Words       map[string]struct{}
+	WsMutex     *sync.RWMutex
+	WordsMutex  *sync.RWMutex
+	Users       map[uint]schema.User
 }
 
-type MutexMap struct {
-	Ws         map[uint]*websocket.Conn
-	Words      map[uint][]string
-	WsMutex    *sync.RWMutex
-	WordsMutex *sync.RWMutex
-	Users      map[uint]schema.User
-}
-
-func (mm MutexMap) MarshalJSON() ([]byte, error) {
-	Players := make([]schema.User, 0, len(mm.Users))
-	for _, v := range mm.Users {
+func (p Players) MarshalJSON() ([]byte, error) {
+	Players := make([]schema.User, 0, len(p.Users))
+	for _, v := range p.Users {
 		Players = append(Players, v)
 	}
 	return json.Marshal(Players)
 }
 
-func (p *Process) nextWord() (string, bool) {
-	p.Mutex.RLock()
-	defer p.Mutex.RUnlock()
-	if len(p.Words) == len(p.GuessedWords) {
-		return "", false
-	}
-
-	i := p.WordId
-	for {
-		_, ok := p.GuessedWords[p.Words[i]]
-		if !ok {
-			break
-		} else {
-			i = (i + 1) % len(p.Words)
-		}
-	}
-	p.WordId = (i + 1) % len(p.Words)
-	return p.Words[i], true
-}
-
-func (p *Process) guessWord(word string) {
-	p.Mutex.Lock()
-	defer p.Mutex.Unlock()
-	p.GuessedWords[word] = p.Teams[p.Storyteller]
-}
-
 func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Game {
 	ws := make(map[uint]*websocket.Conn)
 	ws[host.ID] = nil
-	words := make(map[uint][]string)
-	words[host.ID] = make([]string, 0)
+	wordsByUser := make(map[uint]map[string]struct{})
+	wordsByUser[host.ID] = make(map[string]struct{})
 	users := make(map[uint]schema.User)
 	users[host.ID] = host
+	words := make(map[string]struct{})
 
 	return &Game{
 		Id: gameId,
-		Players: MutexMap{
-			Ws:         ws,
-			Words:      words,
-			WsMutex:    &sync.RWMutex{},
-			WordsMutex: &sync.RWMutex{},
-			Users:      users},
+		Players: Players{
+			Ws:          ws,
+			WordsByUser: wordsByUser,
+			Words:       words,
+			WsMutex:     &sync.RWMutex{},
+			WordsMutex:  &sync.RWMutex{},
+			Users:       users},
 		Process:    Process{},
 		NumPlayers: numPlayers,
 		NumWords:   numWords,
 		Timer:      timer,
 		Host:       host.ID,
 	}
+}
+
+func (g *Game) Get(id uint) (*websocket.Conn, bool) {
+	g.Players.WsMutex.RLock()
+	defer g.Players.WsMutex.RUnlock()
+	ws, ok := g.Players.Ws[id]
+	return ws, ok
 }
 
 func (g *Game) PutWs(id uint, ws *websocket.Conn) error {
@@ -108,13 +83,6 @@ func (g *Game) PutWs(id uint, ws *websocket.Conn) error {
 	return nil
 }
 
-func (g *Game) Get(id uint) (*websocket.Conn, bool) {
-	g.Players.WsMutex.RLock()
-	defer g.Players.WsMutex.RUnlock()
-	ws, ok := g.Players.Ws[id]
-	return ws, ok
-}
-
 func (g *Game) Put(max int, user schema.User, ws *websocket.Conn) error {
 	g.Players.WsMutex.Lock()
 	defer g.Players.WsMutex.Unlock()
@@ -124,11 +92,11 @@ func (g *Game) Put(max int, user schema.User, ws *websocket.Conn) error {
 	if _, ok := g.Players.Ws[user.ID]; ok {
 		return fmt.Errorf("player already in game")
 	}
-	fmt.Printf("Adding player with id: %d\n", user.ID)
+	log.Printf("Adding player with id: %d\n", user.ID)
 	g.Players.Ws[user.ID] = ws
 	g.Players.WordsMutex.Lock()
 	defer g.Players.WordsMutex.Unlock()
-	g.Players.Words[user.ID] = make([]string, 0)
+	g.Players.WordsByUser[user.ID] = make(map[string]struct{})
 	g.Players.Users[user.ID] = user
 	return nil
 }
@@ -136,44 +104,25 @@ func (g *Game) Put(max int, user schema.User, ws *websocket.Conn) error {
 func (g *Game) AddWord(id uint, word string) ([]byte, error) {
 	g.Players.WordsMutex.Lock()
 	defer g.Players.WordsMutex.Unlock()
-	if _, ok := g.Players.Words[id]; !ok {
+	if _, ok := g.Players.WordsByUser[id]; !ok {
 		return nil, fmt.Errorf("no player with id %d", id)
 	}
-	if len(g.Players.Words[id]) == g.NumWords {
+	if len(g.Players.WordsByUser[id]) == g.NumWords {
 		return nil, fmt.Errorf("words limit reached")
 	}
-	fmt.Printf("Adding %s to %d\n", word, id)
-	g.Players.Words[id] = append(g.Players.Words[id], word)
-	return g.CreateWordMessage(word)
-}
-
-func (g Game) CreateWordMessage(word string) ([]byte, error) {
-	msg := map[string]interface{}{
-		"type": "word",
-		"msg":  word,
+	if _, ok := g.Players.Words[word]; ok {
+		return CreateMessage("error", "Already used this word")
 	}
-
-	return json.Marshal(msg)
+	fmt.Printf("Adding %s to %d\n", word, id)
+	g.Players.WordsByUser[id][word] = struct{}{}
+	g.Players.Words[word] = struct{}{}
+	return CreateMessage("word", word)
 }
 
 func (g *Game) CheckWordsFinished() bool {
 	g.Players.WordsMutex.RLock()
 	defer g.Players.WordsMutex.RUnlock()
-	for _, w := range g.Players.Words {
-		if len(w) != g.NumWords {
-			return false
-		}
-	}
-	return true
-}
-
-func (g Game) CreateGameMessage() ([]byte, error) {
-	msg := map[string]interface{}{
-		"type": "game",
-		"msg":  g,
-	}
-
-	return json.Marshal(msg)
+	return len(g.Players.Words) == g.NumPlayers*g.NumWords
 }
 
 func (g Game) NotifyAll(msg []byte) error {
@@ -192,13 +141,14 @@ func (g Game) NotifyAll(msg []byte) error {
 
 func (g *Game) StartProcess() {
 	teams := make([]uint, 0, len(g.Players.Ws))
-	words := make([]string, 0)
+	words := make([]string, 0, len(g.Players.Words))
 	g.Players.WsMutex.RLock()
-	for id, uwords := range g.Players.Words {
+	for id := range g.Players.WordsByUser {
 		teams = append(teams, id)
-		for _, word := range uwords {
-			words = append(words, word)
-		}
+
+	}
+	for word := range g.Players.Words {
+		words = append(words, word)
 	}
 	g.Players.WsMutex.RUnlock()
 
