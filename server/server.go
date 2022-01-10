@@ -278,7 +278,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("[handleHost] %s", err.Error())
 		return
 	}
-	m, err := game.CreateGameMessage()
+	m, err := containers.CreateMessage("game", game)
 	if err != nil {
 		fmt.Printf("[handleHost] %s", err.Error())
 		return
@@ -347,7 +347,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[handleJoin] %s", err.Error())
 		return
 	}
-	m, err := game.CreateGameMessage()
+	m, err := containers.CreateMessage("game", game)
 	if err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
 		return

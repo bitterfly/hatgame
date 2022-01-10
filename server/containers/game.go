@@ -3,6 +3,7 @@ package containers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"math/rand"
 	"sort"
 	"sync"
@@ -225,17 +226,13 @@ func (g *Game) StartProcess() {
 func NotifyGameStarted(g *Game) error {
 	g.Players.WsMutex.RLock()
 	for i, id := range g.Process.Teams {
-		resp := map[string]interface{}{
-			"type": "team",
-			"msg":  g.Process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
-		}
-
-		respJson, err := json.Marshal(resp)
+		resp, err := CreateMessage("team",
+			g.Process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers])
 		if err != nil {
 			return fmt.Errorf("error when marshalling team message: %w", err)
 		}
 		ws, _ := g.Players.Ws[id]
-		err = ws.WriteMessage(websocket.TextMessage, respJson)
+		err = ws.WriteMessage(websocket.TextMessage, resp)
 		if err != nil {
 			return fmt.Errorf("error when sending team message: %w", err)
 		}
@@ -280,27 +277,20 @@ func NotifyGameEnded(game *Game) error {
 		return res[i].Score > res[j].Score
 	})
 
-	resp := map[string]interface{}{
-		"type": "end",
-		"msg":  res,
-	}
-	respJson, err := json.Marshal(resp)
+	resp, err := CreateMessage("end", res)
 	if err != nil {
 		return fmt.Errorf("error when marshalling end message: %w", err)
 	}
-	return game.NotifyAll(respJson)
+	return game.NotifyAll(resp)
 }
 
 func NotifyStoryteller(game *Game) error {
-	resp := map[string]interface{}{
-		"type": "start",
-		"msg":  game.Process.Teams[game.Process.Storyteller],
-	}
-	respJson, err := json.Marshal(resp)
+	resp, err := CreateMessage("start",
+		game.Process.Teams[game.Process.Storyteller])
 	if err != nil {
 		return fmt.Errorf("error when marshalling start message: %w", err)
 	}
-	return game.NotifyAll(respJson)
+	return game.NotifyAll(resp)
 }
 
 func Start(id uint, game *Game) error {
@@ -314,11 +304,7 @@ func Start(id uint, game *Game) error {
 }
 
 func NotifyWord(game *Game, story string) error {
-	resp := map[string]interface{}{
-		"type": "story",
-		"msg":  story,
-	}
-	respJson, err := json.Marshal(resp)
+	resp, err := CreateMessage("story", story)
 	if err != nil {
 		return err
 	}
@@ -327,7 +313,7 @@ func NotifyWord(game *Game, story string) error {
 	ws, _ := game.Players.Ws[game.Process.Teams[game.Process.Storyteller]]
 	game.Players.WsMutex.RUnlock()
 
-	return ws.WriteMessage(websocket.TextMessage, respJson)
+	return ws.WriteMessage(websocket.TextMessage, resp)
 }
 
 func PickWord(game *Game) (bool, error) {
@@ -378,15 +364,12 @@ func tick(game *Game, timerDone chan struct{}, timerGameEnd chan struct{}, timer
 			}
 			i -= 1
 			fmt.Printf("Tick: %d\n", i)
-			resp := map[string]interface{}{
-				"type": "tick",
-				"msg":  i,
-			}
-			respJson, err := json.Marshal(resp)
+
+			resp, err := CreateMessage("tick", i)
 			if err != nil {
 				fmt.Printf("Error when marshalling")
 			}
-			game.NotifyAll(respJson)
+			game.NotifyAll(resp)
 		}
 	}
 }

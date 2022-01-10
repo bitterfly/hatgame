@@ -1,6 +1,7 @@
 package containers
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/gorilla/websocket"
@@ -9,6 +10,10 @@ import (
 type Message struct {
 	Type string
 	Msg  interface{}
+}
+
+func CreateMessage(t string, m interface{}) ([]byte, error) {
+	return json.Marshal(Message{Type: t, Msg: m})
 }
 
 func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint, timerGameEnd chan struct{}) error {
@@ -35,7 +40,6 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint, timerG
 			fmt.Printf("%s\n", err)
 		}
 	case "guess":
-		// TODO: maybe detach the timer stopping and the next word
 		word := fmt.Sprintf("%s", msg.Msg)
 		game.Process.guessWord(word)
 		fmt.Printf("Guessed word %s\n", word)
