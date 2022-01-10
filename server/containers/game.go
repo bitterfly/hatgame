@@ -121,10 +121,7 @@ func (g *Game) PutWs(id uint, ws *websocket.Conn) ([]byte, error) {
 	g.Players.WsMutex.Lock()
 	defer g.Players.WsMutex.Unlock()
 	g.Players.Ws[id] = ws
-	if len(g.Players.Ws) == g.NumPlayers {
-		return g.CreateGameMessage("done")
-	}
-	return g.CreateGameMessage("ok")
+	return g.CreateGameMessage()
 }
 
 func (g *Game) Get(id uint) (*websocket.Conn, bool) {
@@ -149,10 +146,7 @@ func (g *Game) PutAll(max int, user schema.User, ws *websocket.Conn) ([]byte, er
 	defer g.Players.WordsMutex.Unlock()
 	g.Players.Words[user.ID] = make([]string, 0)
 	g.Players.Users[user.ID] = user
-	if len(g.Players.Ws) == g.NumPlayers {
-		return g.CreateGameMessage("done")
-	}
-	return g.CreateGameMessage("ok")
+	return g.CreateGameMessage()
 }
 
 func (g *Game) AddWord(id uint, word string) ([]byte, error) {
@@ -166,14 +160,13 @@ func (g *Game) AddWord(id uint, word string) ([]byte, error) {
 	}
 	fmt.Printf("Adding %s to %d\n", word, id)
 	g.Players.Words[id] = append(g.Players.Words[id], word)
-	return g.CreateWordMessage(word, "ok")
+	return g.CreateWordMessage(word)
 }
 
-func (g Game) CreateWordMessage(word string, status string) ([]byte, error) {
+func (g Game) CreateWordMessage(word string) ([]byte, error) {
 	msg := map[string]interface{}{
-		"type":   "word",
-		"status": status,
-		"msg":    word,
+		"type": "word",
+		"msg":  word,
 	}
 
 	return json.Marshal(msg)
@@ -190,11 +183,10 @@ func (g *Game) CheckWordsFinished() bool {
 	return true
 }
 
-func (g Game) CreateGameMessage(status string) ([]byte, error) {
+func (g Game) CreateGameMessage() ([]byte, error) {
 	msg := map[string]interface{}{
-		"type":   "game",
-		"status": status,
-		"msg":    g,
+		"type": "game",
+		"msg":  g,
 	}
 
 	return json.Marshal(msg)
