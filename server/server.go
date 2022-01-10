@@ -89,51 +89,6 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Main, lol :D\n")
 }
 
-func (s *Server) handleWs(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	gameIds, ok := vars["id"]
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Bad id."))
-		return
-	}
-	gameId, err := strconv.ParseUint(gameIds, 10, 64)
-	if err != nil {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Id is not uint."))
-		return
-	}
-	token, ok := vars["sessionToken"]
-	if !ok {
-		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Bad sessionToken."))
-		return
-	}
-
-	payload, err := s.Token.VerifyToken(token)
-	if err != nil {
-		return
-	}
-	fmt.Printf("%d, %d\n", gameId, payload.Id)
-
-	ws, err := s.Upgrader.Upgrade(w, r, nil)
-	if err != nil {
-		return
-	}
-	s.Mutex.RLock()
-	if _, ok := s.Games[uint(gameId)]; !ok {
-		s.Mutex.RUnlock()
-		return
-	}
-
-	s.Mutex.RUnlock()
-
-	err = ws.WriteMessage(websocket.TextMessage, []byte("Hi!"))
-	if err != nil {
-		return
-	}
-}
-
 func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 	user, err := containers.ParseUser(r.Body)
 	if err != nil {
@@ -156,7 +111,7 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 
 	token, err := s.Token.CreateToken(dbUser.ID, 15)
 	if err != nil {
-		w.WriteHeader(http.StatusUnprocessableEntity)
+		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Could not create authentication token."))
 		return
 	}
@@ -202,11 +157,10 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 	}
 	user, err := database.GetUserByID(s.DB, uint(idU))
 	if err != nil {
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(fmt.Sprintf("No user with id: %d.", idU)))
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
 }
@@ -242,26 +196,30 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	players, err := utils.ParseInt(vars, "players")
 	if err != nil {
+		log.Printf("[handleHost] Could not parse \"player\" var: %s", err.Error())
 		return
 	}
 	numWords, err := utils.ParseInt(vars, "numWords")
 	if err != nil {
+		log.Printf("[handleHost] Could not parse \"numWords\" var: %s", err.Error())
 		return
 	}
 	timer, err := utils.ParseInt(vars, "timer")
 	if err != nil {
+		log.Printf("[handleHost] Could not parse \"timer\" var: %s", err.Error())
 		return
 	}
 	payload, err := s.Token.CheckTokenVars(vars)
 	if err != nil {
+		log.Printf("[handleHost] Could not validate token: %s", err.Error())
 		return
 	}
 
-	fmt.Printf("Players: %d, Words: %d, Timer: %d, HostId: %d\n", players, numWords, timer, payload.Id)
+	log.Printf("Players: %d, Words: %d, Timer: %d, HostId: %d\n", players, numWords, timer, payload.Id)
 
 	user, err := database.GetUserByID(s.DB, payload.Id)
 	if err != nil {
-		fmt.Printf("Could not get user info for user: %d\n", payload.Id)
+		fmt.Printf("[handleHost] Could not get user info for user: %d\n", payload.Id)
 		return
 	}
 
@@ -272,9 +230,19 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	game := containers.NewGame(gameId, *user, players, numWords, timer)
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		fmt.Printf("[handleHost] Could not upgrade to ws")
 		return
 	}
-	m, err := game.PutWs(payload.Id, ws)
+	err = game.PutWs(payload.Id, ws)
+	if err != nil {
+		fmt.Printf("[handleHost] %s", err.Error())
+		return
+	}
+	m, err := game.CreateGameMessage()
+	if err != nil {
+		fmt.Printf("[handleHost] %s", err.Error())
+		return
+	}
 
 	fmt.Printf("Sending: %s\n", m)
 	s.Mutex.Lock()
@@ -283,6 +251,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 
 	err = game.NotifyAll(m)
 	if err != nil {
+		fmt.Printf("[handleHost] Could not notify all players: %s", err.Error())
 		return
 	}
 
@@ -291,6 +260,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	for {
 		err := ws.ReadJSON(&msg)
 		if err != nil {
+			fmt.Printf("[handleHost] %s", err.Error())
 			break
 		}
 		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd)
@@ -302,17 +272,20 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	gameId, err := utils.ParseUint(vars, "id")
 	if err != nil {
+		log.Printf("[handleJoin] Could not parse \"gameId\" var: %s", err.Error())
 		return
 	}
 
 	payload, err := s.Token.CheckTokenVars(vars)
 	if err != nil {
+		log.Printf("[handleJoin] Could not validate token: %s", err.Error())
 		return
 	}
 	fmt.Printf("gameId: %d, userId: %d", gameId, payload.Id)
 
 	user, err := database.GetUserByID(s.DB, payload.Id)
 	if err != nil {
+		log.Printf("[handleJoin] Could not get user info for user: %d\n", payload.Id)
 		return
 	}
 
@@ -320,22 +293,29 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	game, ok := s.Games[uint(gameId)]
 	s.Mutex.RUnlock()
 	if !ok {
+		log.Printf("[handleJoin] No game with id: %d\n", gameId)
 		return
 	}
 
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
+		log.Printf("[handleJoin] Could not upgrade to ws: %s", err.Error())
 		return
 	}
 
-	m, err := game.PutAll(game.NumPlayers, *user, ws)
+	if err := game.Put(game.NumPlayers, *user, ws); err != nil {
+		log.Printf("[handleJoin] %s", err.Error())
+		return
+	}
+	m, err := game.CreateGameMessage()
 	if err != nil {
+		log.Printf("[handleJoin] %s", err.Error())
 		return
 	}
 
 	fmt.Printf("Sending: %s\n", m)
-	err = game.NotifyAll(m)
-	if err != nil {
+	if err := game.NotifyAll(m); err != nil {
+		log.Printf("[handleJoin] %s", err.Error())
 		return
 	}
 
@@ -344,7 +324,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	for {
 		err := ws.ReadJSON(&msg)
 		if err != nil {
-			fmt.Printf("Error reading json")
+			log.Printf("[handleJoin] %s", err.Error())
 			break
 		}
 		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd)

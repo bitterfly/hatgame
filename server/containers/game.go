@@ -97,31 +97,14 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 	}
 }
 
-func (g *Game) Put(max int, id uint) error {
-	g.Players.WsMutex.Lock()
-	defer g.Players.WsMutex.Unlock()
-	if len(g.Players.Ws) == max {
-		return fmt.Errorf("too many players")
-	}
-	if _, ok := g.Players.Ws[id]; ok {
-		return fmt.Errorf("player already in game")
-	}
-	fmt.Printf("Adding player with id: %d\n", id)
-	g.Players.Ws[id] = nil
-	g.Players.WordsMutex.Lock()
-	defer g.Players.WordsMutex.Unlock()
-	g.Players.Words[id] = make([]string, 0)
-	return nil
-}
-
-func (g *Game) PutWs(id uint, ws *websocket.Conn) ([]byte, error) {
+func (g *Game) PutWs(id uint, ws *websocket.Conn) error {
 	if _, ok := g.Players.Ws[id]; !ok {
-		return nil, fmt.Errorf("no such player in game")
+		return fmt.Errorf("no such player in game")
 	}
 	g.Players.WsMutex.Lock()
 	defer g.Players.WsMutex.Unlock()
 	g.Players.Ws[id] = ws
-	return g.CreateGameMessage()
+	return nil
 }
 
 func (g *Game) Get(id uint) (*websocket.Conn, bool) {
@@ -131,14 +114,14 @@ func (g *Game) Get(id uint) (*websocket.Conn, bool) {
 	return ws, ok
 }
 
-func (g *Game) PutAll(max int, user schema.User, ws *websocket.Conn) ([]byte, error) {
+func (g *Game) Put(max int, user schema.User, ws *websocket.Conn) error {
 	g.Players.WsMutex.Lock()
 	defer g.Players.WsMutex.Unlock()
 	if len(g.Players.Ws) == max {
-		return nil, fmt.Errorf("too many players")
+		return fmt.Errorf("too many players")
 	}
 	if _, ok := g.Players.Ws[user.ID]; ok {
-		return nil, fmt.Errorf("player already in game")
+		return fmt.Errorf("player already in game")
 	}
 	fmt.Printf("Adding player with id: %d\n", user.ID)
 	g.Players.Ws[user.ID] = ws
@@ -146,7 +129,7 @@ func (g *Game) PutAll(max int, user schema.User, ws *websocket.Conn) ([]byte, er
 	defer g.Players.WordsMutex.Unlock()
 	g.Players.Words[user.ID] = make([]string, 0)
 	g.Players.Users[user.ID] = user
-	return g.CreateGameMessage()
+	return nil
 }
 
 func (g *Game) AddWord(id uint, word string) ([]byte, error) {
