@@ -63,6 +63,7 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/login", s.handleUserLogin).Methods("POST")
 	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
 	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("GET")
+	s.Mux.HandleFunc("/game/id/{id}", s.handleGameShow).Methods("GET")
 	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
 	s.Mux.HandleFunc("/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/join/{sessionToken}/{id}", s.handleJoin)
@@ -142,6 +143,12 @@ func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
+	_, err := s.Token.CheckTokenRequest(w, r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
@@ -165,9 +172,39 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(user)
 }
 
+func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
+	_, err := s.Token.CheckTokenRequest(w, r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	vars := mux.Vars(r)
+	id, ok := vars["id"]
+	if !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Bad id."))
+		return
+	}
+	idU, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Id is not uint."))
+		return
+	}
+
+	s.Mutex.RLock()
+	if _, ok := s.Games[uint(idU)]; !ok {
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
 func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 	payload, err := s.Token.CheckTokenRequest(w, r)
 	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
 		return
 	}
 
