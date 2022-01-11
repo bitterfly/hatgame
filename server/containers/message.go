@@ -16,28 +16,40 @@ func CreateMessage(t string, m interface{}) ([]byte, error) {
 	return json.Marshal(Message{Type: t, Msg: m})
 }
 
-func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint, timerGameEnd chan struct{}) error {
+func (msg Message) HandleMessage(
+	ws *websocket.Conn,
+	game *Game,
+	id uint,
+	timerGameEnd chan struct{},
+	errors chan error) {
 	fmt.Printf("HandleMessage: %s\n", msg)
 	switch msg.Type {
 	case "word":
 		word := fmt.Sprintf("%s", msg.Msg)
 		resp, err := game.AddWord(id, word)
 		if err != nil {
-			return err
+			errors <- err
+			return
 		}
 		err = ws.WriteMessage(websocket.TextMessage, resp)
 		if err != nil {
-			return fmt.Errorf("could not send message")
+			errors <- fmt.Errorf("could not send message")
+			return
 		}
 
 		if game.CheckWordsFinished() {
-			Start(id, game)
+			err := Start(id, game)
+			if err != nil {
+				errors <- err
+				return
+			}
 		}
 	case "ready":
 		fmt.Printf("Storyteller %d is ready\n", id)
 		err := MakeTurn(id, game, timerGameEnd)
 		if err != nil {
-			fmt.Printf("%s\n", err)
+			errors <- err
+			return
 		}
 	case "guess":
 		word := fmt.Sprintf("%s", msg.Msg)
@@ -48,10 +60,10 @@ func (msg Message) HandleMessage(ws *websocket.Conn, game *Game, id uint, timerG
 			timerGameEnd <- struct{}{}
 		}
 		if err != nil {
-			fmt.Printf("%s\n", err)
+			errors <- err
+			return
 		}
 	default:
-		fmt.Printf("Type: %s\n", msg.Type)
+		errors <- fmt.Errorf("can't decode message: %s", msg)
 	}
-	return nil
 }

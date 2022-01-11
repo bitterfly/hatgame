@@ -296,6 +296,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	timerGameEnd := make(chan struct{})
+	errors := make(chan error)
 	msg := &containers.Message{}
 	for {
 		err := ws.ReadJSON(&msg)
@@ -303,8 +304,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 			fmt.Printf("[handleHost] %s", err.Error())
 			break
 		}
-		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd)
+		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd, errors)
+		go HandleErrors(errors)
 	}
+	close(errors)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -360,6 +363,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	timerGameEnd := make(chan struct{})
+	errors := make(chan error)
 	msg := &containers.Message{}
 	for {
 		err := ws.ReadJSON(&msg)
@@ -367,6 +371,18 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 			log.Printf("[handleJoin] %s", err.Error())
 			break
 		}
-		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd)
+		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd, errors)
+		go HandleErrors(errors)
+	}
+	close(errors)
+}
+
+func HandleErrors(errors chan error) {
+	select {
+	case err, ok := <-errors:
+		if !ok {
+			return
+		}
+		log.Printf("ERROR: %s.\n", err)
 	}
 }
