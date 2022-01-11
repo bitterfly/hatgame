@@ -300,6 +300,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Closing game %d\n", gameId)
 	delete(s.Games, gameId)
+	database.AddGame(s.DB, game)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -365,13 +366,12 @@ func (s *Server) listen(t string, ws *websocket.Conn, game *containers.Game, id 
 	defer close(message)
 
 	go func(ws *websocket.Conn) {
+		defer log.Printf("Closing message goroutine.")
 		for {
 			err := ws.ReadJSON(&msg)
 			if err != nil {
-				log.Printf("[listen] got error: %s\n", err.Error())
 				return
 			}
-			log.Printf("[listen] got message: %s\n", msg)
 			message <- msg
 		}
 	}(ws)
@@ -379,11 +379,10 @@ func (s *Server) listen(t string, ws *websocket.Conn, game *containers.Game, id 
 	for {
 		select {
 		case <-game.Process.GameEnd:
-			log.Printf("%s END closed\n", t)
+			log.Printf("%s Closing websocket and ending game\n", t)
 			ws.Close()
 			return
 		case msg := <-message:
-			log.Printf("%s MESSAGE %s\n", t, msg)
 			go msg.HandleMessage(ws, game, id, timerGameEnd, errors)
 			go HandleErrors(errors)
 		default:

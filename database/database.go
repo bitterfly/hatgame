@@ -7,6 +7,7 @@ import (
 	"os"
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
+	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -45,8 +46,22 @@ func getPsqlInfo(filename string) (*psqlInfo, error) {
 }
 
 func Automigrate(db *gorm.DB) error {
-	err := db.AutoMigrate(&schema.User{})
-	return err
+	if err := db.AutoMigrate(&schema.User{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&schema.Game{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&schema.Word{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&schema.PlayerWord{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&schema.PlayerGame{}); err != nil {
+		return err
+	}
+	return nil
 }
 
 func AddTestUsers(db *gorm.DB) []uint {
@@ -133,3 +148,56 @@ func GetUserByEmail(db *gorm.DB, email string) (*schema.User, error) {
 	err := db.Where("email = ?", email).First(&user).Error
 	return &user, err
 }
+
+func AddGame(db *gorm.DB, game *containers.Game) error {
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		schemaWords := make([]*schema.Word, 0, len(game.Players.Words))
+		schemaWordsMap := make(map[string]*schema.Word)
+		for word := range game.Players.Words {
+			schemaWords = append(schemaWords, &schema.Word{Word: word})
+			schemaWordsMap[word] = schemaWords[len(schemaWords)-1]
+		}
+
+		if err := tx.Create(schemaWords).Error; err != nil {
+			return err
+		}
+
+		playerWords := make([]schema.PlayerWord, 0, len(game.Players.Words))
+		for userId, words := range game.Players.WordsByUser {
+			for word := range words {
+				playerWords = append(
+					playerWords, schema.PlayerWord{UserID: userId, WordID: schemaWordsMap[word].ID})
+			}
+		}
+
+		if err := tx.Create(playerWords).Error; err != nil {
+			return err
+		}
+
+		schemaGame := &schema.Game{
+			UserID:      game.Host,
+			NumPlayers:  game.NumPlayers,
+			Timer:       game.Timer,
+			NumWords:    game.NumWords,
+			PlayerWords: playerWords,
+		}
+
+		if err := tx.Create(schemaGame).Error; err != nil {
+			return err
+		}
+		for userID := range game.Players.Ws {
+			if err := tx.Create(&schema.PlayerGame{
+				UserID: userID,
+				GameID: schemaGame.ID,
+			}).Error; err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+
+}
+
+// db.Model(&data).Association("Entities").Append([]*Entity{&Entity{Name: "mynewentity"}})
