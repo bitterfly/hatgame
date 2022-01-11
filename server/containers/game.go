@@ -32,6 +32,26 @@ type Players struct {
 	Users       map[uint]schema.User
 }
 
+func (g *Game) nextWord() (string, bool) {
+	g.Process.Mutex.RLock()
+	defer g.Process.Mutex.RUnlock()
+	g.Players.WordsMutex.RLock()
+	defer g.Players.WordsMutex.RUnlock()
+
+	if len(g.Players.Words) == len(g.Process.GuessedWords) {
+		return "", false
+	}
+
+	unguessed := make([]string, 0, len(g.Players.Words)-len(g.Process.GuessedWords))
+	for word := range g.Players.Words {
+		if _, ok := g.Process.GuessedWords[word]; !ok {
+			unguessed = append(unguessed, word)
+		}
+	}
+
+	return unguessed[rand.Intn(len(unguessed))], true
+}
+
 func (p Players) MarshalJSON() ([]byte, error) {
 	Players := make([]schema.User, 0, len(p.Users))
 	for _, v := range p.Users {
@@ -141,30 +161,20 @@ func (g Game) NotifyAll(msg []byte) error {
 
 func (g *Game) StartProcess() {
 	teams := make([]uint, 0, len(g.Players.Ws))
-	words := make([]string, 0, len(g.Players.Words))
-	g.Players.WsMutex.RLock()
+	g.Players.WordsMutex.RLock()
 	for id := range g.Players.WordsByUser {
 		teams = append(teams, id)
 
 	}
-	for word := range g.Players.Words {
-		words = append(words, word)
-	}
-	g.Players.WsMutex.RUnlock()
+	g.Players.WordsMutex.RUnlock()
 
 	rand.Shuffle(
 		len(teams),
 		func(i, j int) { teams[i], teams[j] = teams[j], teams[i] },
 	)
 
-	rand.Shuffle(
-		len(words),
-		func(i, j int) { words[i], words[j] = words[j], words[i] },
-	)
-
 	g.Process = Process{
 		Teams:        teams,
-		Words:        words,
 		GuessedWords: make(map[string]uint),
 		Mutex:        &sync.RWMutex{},
 		Storyteller:  0,
@@ -245,7 +255,7 @@ func NotifyStoryteller(game *Game) error {
 
 func Start(id uint, game *Game) error {
 	game.StartProcess()
-	fmt.Printf("Teams: %v\nWords: %v\n", game.Process.Teams, game.Process.Words)
+	fmt.Printf("Teams: %v\nWords: %v\n", game.Process.Teams, game.Players.Words)
 	err := NotifyGameStarted(game)
 	if err != nil {
 		return err
@@ -267,7 +277,7 @@ func NotifyWord(game *Game, story string) error {
 }
 
 func PickWord(game *Game) (bool, error) {
-	story, found := game.Process.nextWord()
+	story, found := game.nextWord()
 	fmt.Printf("Story chosen: %s\n", story)
 
 	if !found {
