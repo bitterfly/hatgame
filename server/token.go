@@ -22,7 +22,6 @@ type Payload struct {
 }
 
 func (payload *Payload) Valid() error {
-	fmt.Printf("pl %d\n", payload.Expires)
 	if time.Now().After(time.Unix(payload.Expires, 0)) {
 		return ErrExpiredToken
 	}

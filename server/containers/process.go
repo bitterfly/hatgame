@@ -8,6 +8,7 @@ type Process struct {
 	Teams        []uint
 	GuessedWords map[string]uint
 	Mutex        *sync.RWMutex
+	GameEnd      chan struct{}
 }
 
 func (p *Process) guessWord(word string) {

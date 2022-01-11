@@ -177,10 +177,10 @@ func (g *Game) StartProcess() {
 		Teams:        teams,
 		GuessedWords: make(map[string]uint),
 		Mutex:        &sync.RWMutex{},
+		GameEnd:      make(chan struct{}),
 		Storyteller:  0,
 		WordId:       0,
 	}
-
 }
 
 func NotifyGameStarted(g *Game) error {
@@ -253,9 +253,9 @@ func NotifyStoryteller(game *Game) error {
 	return game.NotifyAll(resp)
 }
 
-func Start(id uint, game *Game) error {
+func (game *Game) Start(id uint) error {
 	game.StartProcess()
-	fmt.Printf("Teams: %v\nWords: %v\n", game.Process.Teams, game.Players.Words)
+	log.Printf("Teams: %v\nWords: %v\n", game.Process.Teams, game.Players.Words)
 	err := NotifyGameStarted(game)
 	if err != nil {
 		return err
@@ -276,24 +276,16 @@ func NotifyWord(game *Game, story string) error {
 	return ws.WriteMessage(websocket.TextMessage, resp)
 }
 
-func PickWord(game *Game) (bool, error) {
+func MakeTurn(id uint, game *Game, timerGameEnd chan struct{}) error {
 	story, found := game.nextWord()
 	fmt.Printf("Story chosen: %s\n", story)
 
 	if !found {
-		return false, NotifyGameEnded(game)
+		return NotifyGameEnded(game)
 	}
 
 	err := NotifyWord(game, story)
 	if err != nil {
-		return true, err
-	}
-	return true, nil
-}
-
-func MakeTurn(id uint, game *Game, timerGameEnd chan struct{}) error {
-	ok, err := PickWord(game)
-	if !ok || err != nil {
 		return err
 	}
 
@@ -313,10 +305,8 @@ func tick(game *Game, timerDone chan struct{}, timerGameEnd chan struct{}, timer
 	for {
 		select {
 		case <-timerDone:
-			fmt.Printf("Timer done\n")
 			return
 		case <-timerGameEnd:
-			fmt.Printf("Game end done\n")
 			return
 		case _, ok := <-timer.C:
 			if !ok {

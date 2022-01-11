@@ -3,6 +3,7 @@ package containers
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 
 	"github.com/gorilla/websocket"
 )
@@ -22,7 +23,7 @@ func (msg Message) HandleMessage(
 	id uint,
 	timerGameEnd chan struct{},
 	errors chan error) {
-	fmt.Printf("HandleMessage: %s\n", msg)
+	log.Printf("HandleMessage: %s\n", msg.Type)
 	switch msg.Type {
 	case "word":
 		word := fmt.Sprintf("%s", msg.Msg)
@@ -38,14 +39,13 @@ func (msg Message) HandleMessage(
 		}
 
 		if game.CheckWordsFinished() {
-			err := Start(id, game)
+			err := game.Start(id)
 			if err != nil {
 				errors <- err
 				return
 			}
 		}
 	case "ready":
-		fmt.Printf("Storyteller %d is ready\n", id)
 		err := MakeTurn(id, game, timerGameEnd)
 		if err != nil {
 			errors <- err
@@ -54,11 +54,24 @@ func (msg Message) HandleMessage(
 	case "guess":
 		word := fmt.Sprintf("%s", msg.Msg)
 		game.Process.guessWord(word)
-		fmt.Printf("Guessed word %s\n", word)
-		ok, err := PickWord(game)
-		if !ok {
+
+		story, found := game.nextWord()
+
+		if !found {
+			err := NotifyGameEnded(game)
+			if err != nil {
+				errors <- err
+				return
+			}
 			timerGameEnd <- struct{}{}
+			for i := 0; i < game.NumPlayers+1; i++ {
+				game.Process.GameEnd <- struct{}{}
+			}
+			close(game.Process.GameEnd)
+			return
 		}
+
+		err := NotifyWord(game, story)
 		if err != nil {
 			errors <- err
 			return

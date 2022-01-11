@@ -259,7 +259,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 
 	user, err := database.GetUserByID(s.DB, payload.Id)
 	if err != nil {
-		fmt.Printf("[handleHost] Could not get user info for user: %d\n", payload.Id)
+		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.Id)
 		return
 	}
 
@@ -270,44 +270,36 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	game := containers.NewGame(gameId, *user, players, numWords, timer)
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		fmt.Printf("[handleHost] Could not upgrade to ws")
+		log.Printf("[handleHost] Could not upgrade to ws")
 		return
 	}
 	err = game.PutWs(payload.Id, ws)
 	if err != nil {
-		fmt.Printf("[handleHost] %s", err.Error())
+		log.Printf("[handleHost] %s", err.Error())
 		return
 	}
 	m, err := containers.CreateMessage("game", game)
 	if err != nil {
-		fmt.Printf("[handleHost] %s", err.Error())
+		log.Printf("[handleHost] %s", err.Error())
 		return
 	}
 
-	fmt.Printf("Sending: %s\n", m)
 	s.Mutex.Lock()
 	s.Games[gameId] = game
 	s.Mutex.Unlock()
 
 	err = game.NotifyAll(m)
 	if err != nil {
-		fmt.Printf("[handleHost] Could not notify all players: %s", err.Error())
+		log.Printf("[handleHost] Could not notify all players: %s", err.Error())
 		return
 	}
 
-	timerGameEnd := make(chan struct{})
-	errors := make(chan error)
-	msg := &containers.Message{}
-	for {
-		err := ws.ReadJSON(&msg)
-		if err != nil {
-			fmt.Printf("[handleHost] %s", err.Error())
-			break
-		}
-		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd, errors)
-		go HandleErrors(errors)
-	}
-	close(errors)
+	s.listen("[HOST]", ws, game, payload.Id)
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+
+	log.Printf("Closing game %d\n", gameId)
+	delete(s.Games, gameId)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -324,7 +316,6 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[handleJoin] Could not validate token: %s", err.Error())
 		return
 	}
-	fmt.Printf("gameId: %d, userId: %d", gameId, payload.Id)
 
 	user, err := database.GetUserByID(s.DB, payload.Id)
 	if err != nil {
@@ -356,25 +347,48 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("Sending: %s\n", m)
 	if err := game.NotifyAll(m); err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
 		return
 	}
 
-	timerGameEnd := make(chan struct{})
-	errors := make(chan error)
+	s.listen("[JOIN]", ws, game, payload.Id)
+}
+
+func (s *Server) listen(t string, ws *websocket.Conn, game *containers.Game, id uint) {
 	msg := &containers.Message{}
-	for {
-		err := ws.ReadJSON(&msg)
-		if err != nil {
-			log.Printf("[handleJoin] %s", err.Error())
-			break
+	timerGameEnd := make(chan struct{})
+	defer close(timerGameEnd)
+	errors := make(chan error)
+	defer close(errors)
+	message := make(chan *containers.Message, 1)
+	defer close(message)
+
+	go func(ws *websocket.Conn) {
+		for {
+			err := ws.ReadJSON(&msg)
+			if err != nil {
+				log.Printf("[listen] got error: %s\n", err.Error())
+				return
+			}
+			log.Printf("[listen] got message: %s\n", msg)
+			message <- msg
 		}
-		go msg.HandleMessage(ws, game, payload.Id, timerGameEnd, errors)
-		go HandleErrors(errors)
+	}(ws)
+
+	for {
+		select {
+		case <-game.Process.GameEnd:
+			log.Printf("%s END closed\n", t)
+			ws.Close()
+			return
+		case msg := <-message:
+			log.Printf("%s MESSAGE %s\n", t, msg)
+			go msg.HandleMessage(ws, game, id, timerGameEnd, errors)
+			go HandleErrors(errors)
+		default:
+		}
 	}
-	close(errors)
 }
 
 func HandleErrors(errors chan error) {
