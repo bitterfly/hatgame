@@ -300,7 +300,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Closing game %d\n", gameId)
 	delete(s.Games, gameId)
-	database.AddGame(s.DB, game)
+	err = database.AddGame(s.DB, game)
+	if err != nil {
+		log.Printf("Error when inserting game to database: %s", err.Error())
+	}
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {

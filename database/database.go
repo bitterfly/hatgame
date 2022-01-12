@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 type psqlInfo struct {
@@ -159,7 +160,7 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 			schemaWordsMap[word] = schemaWords[len(schemaWords)-1]
 		}
 
-		if err := tx.Create(schemaWords).Error; err != nil {
+		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(schemaWords).Error; err != nil {
 			return err
 		}
 
