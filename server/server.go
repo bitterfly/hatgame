@@ -202,6 +202,7 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(s.Games[uint(idU)])
 }
 
 func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
