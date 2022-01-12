@@ -167,11 +167,28 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 		for userId, words := range game.Players.WordsByUser {
 			for word := range words {
 				playerWords = append(
-					playerWords, schema.PlayerWord{UserID: userId, WordID: schemaWordsMap[word].ID})
+					playerWords, schema.PlayerWord{
+						AuthorID:    userId,
+						GuessedByID: game.Process.GuessedWords[word],
+						WordID:      schemaWordsMap[word].ID})
 			}
 		}
 
 		if err := tx.Create(playerWords).Error; err != nil {
+			return err
+		}
+
+		numTeams := int(float64(game.NumPlayers) / 2)
+		fmt.Printf("NumPlayers: %d\n", numTeams)
+		schemaTeams := make([]schema.Team, 0, numTeams)
+		for i := 0; i < numTeams; i++ {
+			schemaTeams = append(schemaTeams, schema.Team{
+				FirstID:  game.Process.Teams[i],
+				SecondID: game.Process.Teams[(i+numTeams)%game.NumPlayers],
+			})
+		}
+
+		if err := tx.Create(schemaTeams).Error; err != nil {
 			return err
 		}
 
@@ -181,6 +198,7 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 			Timer:       game.Timer,
 			NumWords:    game.NumWords,
 			PlayerWords: playerWords,
+			Teams:       schemaTeams,
 		}
 
 		if err := tx.Create(schemaGame).Error; err != nil {

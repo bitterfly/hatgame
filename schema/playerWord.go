@@ -4,6 +4,9 @@ import "gorm.io/gorm"
 
 type PlayerWord struct {
 	gorm.Model
-	UserID uint
-	WordID uint
+	AuthorID    uint
+	GuessedByID uint
+	Author      User `gorm:"foreignKey:AuthorID"`
+	GuessedBy   User `gorm:"foreignKey:GuessedByID"`
+	WordID      uint
 }
