@@ -59,15 +59,15 @@ func (s *Server) getGameId() uint {
 }
 
 func (s *Server) Connect(address string) error {
-	s.Mux.HandleFunc("/", s.handleMain)
-	s.Mux.HandleFunc("/login", s.handleUserLogin).Methods("POST")
-	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
-	s.Mux.HandleFunc("/stat", s.handleStat).Methods("GET")
-	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("GET")
-	s.Mux.HandleFunc("/game/id/{id}", s.handleGameShow).Methods("POST")
-	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
-	s.Mux.HandleFunc("/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
-	s.Mux.HandleFunc("/join/{sessionToken}/{id}", s.handleJoin)
+	s.Mux.HandleFunc("/api/", s.handleMain)
+	s.Mux.HandleFunc("/api/login", s.handleUserLogin).Methods("POST")
+	s.Mux.HandleFunc("/api/register", s.handleUserRegister).Methods("POST")
+	s.Mux.HandleFunc("/api/stat", s.handleStat).Methods("GET")
+	s.Mux.HandleFunc("/api/user/id/{id}", s.handleUserShow).Methods("GET")
+	s.Mux.HandleFunc("/api/game/id/{id}", s.handleGameShow).Methods("POST")
+	s.Mux.HandleFunc("/api/user/password", s.handleUserPassword).Methods("POST")
+	s.Mux.HandleFunc("/api/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
+	s.Mux.HandleFunc("/api/join/{sessionToken}/{id}", s.handleJoin)
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
 	log.Printf("Starting server on %s\n", address)
 
