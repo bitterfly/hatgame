@@ -64,7 +64,7 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
 	s.Mux.HandleFunc("/stat", s.handleStat).Methods("GET")
 	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("GET")
-	s.Mux.HandleFunc("/game/id/{id}", s.handleGameShow).Methods("GET")
+	s.Mux.HandleFunc("/game/id/{id}", s.handleGameShow).Methods("POST")
 	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
 	s.Mux.HandleFunc("/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/join/{sessionToken}/{id}", s.handleJoin)
