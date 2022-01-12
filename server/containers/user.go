@@ -10,6 +10,7 @@ import (
 type User struct {
 	Email    string
 	Password string
+	Username string
 }
 
 func ParseUser(data io.ReadCloser) (*User, error) {

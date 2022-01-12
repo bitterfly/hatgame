@@ -128,13 +128,27 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
-	user, err := schema.ParseUser(r.Body)
+	user, err := containers.ParseUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
 		return
 	}
-	id, err := database.AddUser(s.DB, user)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not encode password"))
+		return
+	}
+
+	fmt.Printf("%v\n", user)
+	schemaUser := &schema.User{
+		Email:    user.Email,
+		Password: hashedPassword,
+		Username: user.Username,
+	}
+
+	id, err := database.AddUser(s.DB, schemaUser)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
