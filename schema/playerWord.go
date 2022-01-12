@@ -9,4 +9,5 @@ type PlayerWord struct {
 	Author      User `gorm:"foreignKey:AuthorID"`
 	GuessedBy   User `gorm:"foreignKey:GuessedByID"`
 	WordID      uint
+	Word        Word
 }

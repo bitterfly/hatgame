@@ -11,7 +11,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/clause"
 )
 
 type psqlInfo struct {
@@ -151,27 +150,20 @@ func GetUserByEmail(db *gorm.DB, email string) (*schema.User, error) {
 }
 
 func AddGame(db *gorm.DB, game *containers.Game) error {
-
 	return db.Transaction(func(tx *gorm.DB) error {
-		schemaWords := make([]*schema.Word, 0, len(game.Players.Words))
-		schemaWordsMap := make(map[string]*schema.Word)
-		for word := range game.Players.Words {
-			schemaWords = append(schemaWords, &schema.Word{Word: word})
-			schemaWordsMap[word] = schemaWords[len(schemaWords)-1]
-		}
-
-		if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(schemaWords).Error; err != nil {
-			return err
-		}
-
 		playerWords := make([]schema.PlayerWord, 0, len(game.Players.Words))
 		for userId, words := range game.Players.WordsByUser {
 			for word := range words {
+				schemaWord := schema.Word{Word: word}
+				if err := tx.Where("word = ?", word).FirstOrCreate(&schemaWord).Error; err != nil {
+					return err
+				}
+
 				playerWords = append(
 					playerWords, schema.PlayerWord{
 						AuthorID:    userId,
 						GuessedByID: game.Process.GuessedWords[word],
-						WordID:      schemaWordsMap[word].ID})
+						WordID:      schemaWord.ID})
 			}
 		}
 
@@ -219,4 +211,10 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 
 }
 
-// db.Model(&data).Association("Entities").Append([]*Entity{&Entity{Name: "mynewentity"}})
+// func GetUserStatistics(db *gorm.DB, id uint) error {
+// 	return db.Transaction(func(tx *gorm.DB) error {
+
+// 		tx.Where("author_id = ?", id).First(&user)
+// 		return nil
+// 	})
+// }
