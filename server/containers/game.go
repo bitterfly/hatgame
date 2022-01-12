@@ -237,6 +237,8 @@ func NotifyGameEnded(game *Game) error {
 		return res[i].Score > res[j].Score
 	})
 
+	game.Process.WinningTeam = res[0]
+
 	resp, err := CreateMessage("end", res)
 	if err != nil {
 		return fmt.Errorf("error when marshalling end message: %w", err)

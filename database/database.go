@@ -175,13 +175,19 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 		fmt.Printf("NumPlayers: %d\n", numTeams)
 		schemaTeams := make([]schema.Team, 0, numTeams)
 		for i := 0; i < numTeams; i++ {
-			schemaTeams = append(schemaTeams, schema.Team{
+			schemaTeam := schema.Team{
 				FirstID:  game.Process.Teams[i],
 				SecondID: game.Process.Teams[(i+numTeams)%game.NumPlayers],
-			})
+			}
+			if err := tx.Where("first_id = ?", schemaTeam.FirstID).FirstOrCreate(&schemaTeam).Error; err != nil {
+				return err
+			}
+
+			schemaTeams = append(schemaTeams, schemaTeam)
 		}
 
-		if err := tx.Create(schemaTeams).Error; err != nil {
+		var winningTeamID uint
+		if err := tx.Model(&schema.Team{}).Select("id").Where("first_id = ?", game.Process.WinningTeam.First).First(&winningTeamID).Error; err != nil {
 			return err
 		}
 
@@ -192,6 +198,7 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 			NumWords:    game.NumWords,
 			PlayerWords: playerWords,
 			Teams:       schemaTeams,
+			TeamID:      winningTeamID,
 		}
 
 		if err := tx.Create(schemaGame).Error; err != nil {
@@ -211,10 +218,48 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 
 }
 
-// func GetUserStatistics(db *gorm.DB, id uint) error {
-// 	return db.Transaction(func(tx *gorm.DB) error {
+type result struct {
+	Word  string
+	Count int
+}
 
-// 		tx.Where("author_id = ?", id).First(&user)
-// 		return nil
-// 	})
-// }
+func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
+	words := make([]containers.Word, 0)
+	var numGames int64
+	var numWins int64
+	err := db.Transaction(func(tx *gorm.DB) error {
+		rows, err := tx.Model(&schema.PlayerWord{}).Limit(10).Select("words.word, count(words.word) as count").Joins("left join words on player_words.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
+		if err != nil {
+			fmt.Printf("%s", err.Error())
+		}
+
+		var word string
+		var count int
+		for rows.Next() {
+			err = rows.Scan(&word, &count)
+			if err != nil {
+				return err
+			}
+			words = append(words, containers.Word{Word: word, Count: count})
+		}
+
+		if err := tx.Model(&schema.PlayerGame{}).Distinct("game_id").Where("user_id = ?", id).Count(&numGames).Error; err != nil {
+			return err
+		}
+
+		if err := tx.Model(&schema.Game{}).Joins("left join teams on games.team_id = teams.id").Where("teams.first_id = ?", id).Or("teams.second_id = ?", id).Count(&numWins).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return containers.Statistics{}, err
+	}
+	return containers.Statistics{
+		GamesPlayed:  numGames,
+		NumberOfWins: numWins,
+		TopWords:     words,
+	}, nil
+}
