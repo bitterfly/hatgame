@@ -8,6 +8,7 @@ import (
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
+	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -175,19 +176,23 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 		fmt.Printf("NumPlayers: %d\n", numTeams)
 		schemaTeams := make([]schema.Team, 0, numTeams)
 		for i := 0; i < numTeams; i++ {
+			firstID, secondID := utils.Order(
+				game.Process.Teams[i],
+				game.Process.Teams[(i+numTeams)%game.NumPlayers])
 			schemaTeam := schema.Team{
-				FirstID:  game.Process.Teams[i],
-				SecondID: game.Process.Teams[(i+numTeams)%game.NumPlayers],
+				FirstID:  firstID,
+				SecondID: secondID,
 			}
-			if err := tx.Where("first_id = ?", schemaTeam.FirstID).FirstOrCreate(&schemaTeam).Error; err != nil {
+			if err := tx.Where("first_id = ? AND second_id = ?", schemaTeam.FirstID, schemaTeam.SecondID).FirstOrCreate(&schemaTeam).Error; err != nil {
 				return err
 			}
 
 			schemaTeams = append(schemaTeams, schemaTeam)
 		}
+		fmt.Printf("%d, %d", game.Process.WinningTeam.First, game.Process.WinningTeam.Second)
 
 		var winningTeamID uint
-		if err := tx.Model(&schema.Team{}).Select("id").Where("first_id = ?", game.Process.WinningTeam.First).First(&winningTeamID).Error; err != nil {
+		if err := tx.Model(&schema.Team{}).Select("id").Where("first_id = ? AND second_id = ?", game.Process.WinningTeam.First, game.Process.WinningTeam.Second).First(&winningTeamID).Error; err != nil {
 			return err
 		}
 

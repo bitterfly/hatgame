@@ -37,3 +37,10 @@ func ParseInt(vars map[string]string, name string) (int, error) {
 	}
 	return int(value), nil
 }
+
+func Order(a, b uint) (uint, uint) {
+	if a < b {
+		return a, b
+	}
+	return b, a
+}

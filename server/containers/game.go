@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
+	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"github.com/gorilla/websocket"
 )
 
@@ -207,10 +208,6 @@ type Team struct {
 	Score  int
 }
 
-func makeTeam(a, b uint) Team {
-	return Team{First: a, Second: b}
-}
-
 func NotifyGameEnded(game *Game) error {
 	fmt.Printf("Notify game end\n")
 
@@ -223,11 +220,13 @@ func NotifyGameEnded(game *Game) error {
 	}
 	teams := int(game.NumPlayers / 2.0)
 	res := make([]Team, 0, teams)
+
 	for i := 0; i < teams; i++ {
-		team := makeTeam(
+		first, second := utils.Order(
 			game.Process.Teams[i],
-			game.Process.Teams[(i+teams)%game.NumPlayers],
-		)
+			game.Process.Teams[(i+teams)%game.NumPlayers])
+
+		team := Team{First: first, Second: second}
 		team.Score =
 			rev[team.First] + rev[team.Second]
 		res = append(res, team)
