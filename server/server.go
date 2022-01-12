@@ -62,6 +62,7 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/", s.handleMain)
 	s.Mux.HandleFunc("/login", s.handleUserLogin).Methods("POST")
 	s.Mux.HandleFunc("/register", s.handleUserRegister).Methods("POST")
+	s.Mux.HandleFunc("/stat", s.handleStat).Methods("POST")
 	s.Mux.HandleFunc("/user/id/{id}", s.handleUserShow).Methods("POST")
 	s.Mux.HandleFunc("/game/id/{id}", s.handleGameShow).Methods("POST")
 	s.Mux.HandleFunc("/user/password", s.handleUserPassword).Methods("POST")
@@ -170,6 +171,22 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user)
+}
+
+func (s *Server) handleStat(w http.ResponseWriter, r *http.Request) {
+	payload, err := s.Token.CheckTokenRequest(w, r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	stat, err := database.GetUserStatistics(s.DB, payload.Id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(stat)
 }
 
 func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
