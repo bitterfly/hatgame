@@ -67,6 +67,7 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/api/user/id/{id}", s.handleUserShow).Methods("GET")
 	s.Mux.HandleFunc("/api/game/id/{id}", s.handleGameShow).Methods("POST")
 	s.Mux.HandleFunc("/api/user/change", s.handleUserChange).Methods("POST")
+	s.Mux.HandleFunc("/api/user", s.handleUserGet).Methods("POST")
 	s.Mux.HandleFunc("/api/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/api/join/{sessionToken}/{id}", s.handleJoin)
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
@@ -202,6 +203,31 @@ func (s *Server) handleStat(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(stat)
+}
+
+func (s *Server) handleUserGet(w http.ResponseWriter, r *http.Request) {
+	payload, err := s.Token.CheckTokenRequest(w, r)
+	if err != nil {
+		w.WriteHeader(http.StatusUnauthorized)
+		return
+	}
+
+	dbUser, err := database.GetUserByID(s.DB, payload.Id)
+	if err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte("Could not fetch from database."))
+		return
+	}
+
+	fmt.Printf("%s, %v\n", ExtractToken(r), dbUser)
+
+	resp := map[string]interface{}{
+		"sessionToken": ExtractToken(r),
+		"user":         dbUser,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(resp)
 }
 
 func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
