@@ -136,6 +136,13 @@ func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Bad user json."))
 		return
 	}
+
+	if _, err := database.GetUserByEmail(s.DB, user.Email); err == nil {
+		w.WriteHeader(http.StatusConflict)
+		w.Write([]byte("User with that email already exists."))
+		return
+	}
+
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
