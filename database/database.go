@@ -114,9 +114,9 @@ func AddTestUsers(db *gorm.DB) []uint {
 	return ids
 }
 
-func UpdateUserPassword(db *gorm.DB, id uint, password []byte) error {
+func UpdateUser(db *gorm.DB, id uint, password []byte, username string) error {
 	fmt.Printf("%d\n", id)
-	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Error
+	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Update("username", username).Error
 }
 
 func Open(filename string) (*gorm.DB, error) {

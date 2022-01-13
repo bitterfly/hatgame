@@ -65,7 +65,7 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/api/stat", s.handleStat).Methods("GET")
 	s.Mux.HandleFunc("/api/user/id/{id}", s.handleUserShow).Methods("GET")
 	s.Mux.HandleFunc("/api/game/id/{id}", s.handleGameShow).Methods("POST")
-	s.Mux.HandleFunc("/api/user/password", s.handleUserPassword).Methods("POST")
+	s.Mux.HandleFunc("/api/user/change", s.handleUserChange).Methods("POST")
 	s.Mux.HandleFunc("/api/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/api/join/{sessionToken}/{id}", s.handleJoin)
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
@@ -236,7 +236,7 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(s.Games[uint(idU)])
 }
 
-func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
+func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 	payload, err := s.Token.CheckTokenRequest(w, r)
 	if err != nil {
 		w.WriteHeader(http.StatusUnauthorized)
@@ -256,7 +256,7 @@ func (s *Server) handleUserPassword(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Could not encrypt password."))
 		return
 	}
-	err = database.UpdateUserPassword(s.DB, payload.Id, newPassowrd)
+	err = database.UpdateUser(s.DB, payload.Id, newPassowrd, user.Username)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
