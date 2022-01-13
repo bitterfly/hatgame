@@ -411,6 +411,14 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	if err := game.Put(game.NumPlayers, *user, ws); err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
+		resp, err := containers.CreateMessage("error", err.Error())
+		if err != nil {
+			log.Printf("[handleJoin] %s", err.Error())
+		}
+		err = ws.WriteMessage(websocket.TextMessage, resp)
+		if err != nil {
+			log.Printf("[handleJoin] %s", err.Error())
+		}
 		return
 	}
 	m, err := containers.CreateMessage("game", game)
