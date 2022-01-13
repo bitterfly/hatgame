@@ -9,7 +9,5 @@ type Game struct {
 	Timer       int
 	NumWords    int
 	PlayerWords []PlayerWord `gorm:"many2many:game_playerWords;"`
-	Teams       []Team       `gorm:"many2many:game_teams;"`
-	TeamID      uint
-	WinningTeam Team `gorm:"foreignKey:TeamID"`
+	Result      []Result     `gorm:"many2many:game_results;"`
 }

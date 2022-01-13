@@ -8,7 +8,6 @@ import (
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
-	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -48,6 +47,12 @@ func getPsqlInfo(filename string) (*psqlInfo, error) {
 
 func Automigrate(db *gorm.DB) error {
 	if err := db.AutoMigrate(&schema.User{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&schema.Team{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&schema.Result{}); err != nil {
 		return err
 	}
 	if err := db.AutoMigrate(&schema.Game{}); err != nil {
@@ -184,26 +189,19 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 
 		numTeams := int(float64(game.NumPlayers) / 2)
 		fmt.Printf("NumPlayers: %d\n", numTeams)
-		schemaTeams := make([]schema.Team, 0, numTeams)
-		for i := 0; i < numTeams; i++ {
-			firstID, secondID := utils.Order(
-				game.Process.Teams[i],
-				game.Process.Teams[(i+numTeams)%game.NumPlayers])
+		schemaResults := make([]schema.Result, 0, numTeams)
+		for _, r := range game.Process.Result {
 			schemaTeam := schema.Team{
-				FirstID:  firstID,
-				SecondID: secondID,
+				FirstID:  r.FirstID,
+				SecondID: r.SecondID,
 			}
 			if err := tx.Where("first_id = ? AND second_id = ?", schemaTeam.FirstID, schemaTeam.SecondID).FirstOrCreate(&schemaTeam).Error; err != nil {
 				return err
 			}
 
-			schemaTeams = append(schemaTeams, schemaTeam)
-		}
-		fmt.Printf("%d, %d", game.Process.WinningTeam.First, game.Process.WinningTeam.Second)
+			schemaResult := schema.Result{TeamID: schemaTeam.ID, Score: r.Score}
 
-		var winningTeamID uint
-		if err := tx.Model(&schema.Team{}).Select("id").Where("first_id = ? AND second_id = ?", game.Process.WinningTeam.First, game.Process.WinningTeam.Second).First(&winningTeamID).Error; err != nil {
-			return err
+			schemaResults = append(schemaResults, schemaResult)
 		}
 
 		schemaGame := &schema.Game{
@@ -212,8 +210,7 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 			Timer:       game.Timer,
 			NumWords:    game.NumWords,
 			PlayerWords: playerWords,
-			Teams:       schemaTeams,
-			TeamID:      winningTeamID,
+			Result:      schemaResults,
 		}
 
 		if err := tx.Create(schemaGame).Error; err != nil {
@@ -233,15 +230,19 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 
 }
 
-type result struct {
-	Word  string
-	Count int
+type Result struct {
+	FirstID  uint
+	SecondID uint
+	Score    int
+	ID       uint
 }
 
 func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 	words := make([]containers.Word, 0)
 	var numGames int64
 	var numWins int64
+	var numTies int64
+	var res Result
 	err := db.Transaction(func(tx *gorm.DB) error {
 		rows, err := tx.Model(&schema.PlayerWord{}).Limit(10).Select("words.word, count(words.word) as count").Joins("left join words on player_words.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
 		if err != nil {
@@ -262,8 +263,32 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 			return err
 		}
 
-		if err := tx.Model(&schema.Game{}).Joins("left join teams on games.team_id = teams.id").Where("teams.first_id = ?", id).Or("teams.second_id = ?", id).Count(&numWins).Error; err != nil {
+		rows, err = tx.Raw("select teams.first_id, teams.second_id, results.score, games.id from game_results left join games on game_results.game_id = games.id left join results on results.id = game_results.result_id left join teams on teams.id = results.team_id where results.score = (select max(results2.score) from game_results as game_results2 left join results as results2 on game_results2.result_id = results2.id where game_results2.game_id = games.id);").Rows()
+		if err != nil {
 			return err
+		}
+
+		results := make(map[uint][]containers.Result)
+		for rows.Next() {
+			if err := tx.ScanRows(rows, &res); err != nil {
+				return err
+			}
+			results[res.ID] = append(
+				results[res.ID],
+				containers.Result{
+					FirstID:  res.FirstID,
+					SecondID: res.SecondID, Score: res.Score})
+		}
+
+		for _, res := range results {
+			if containers.Contains(res, id) {
+				if len(res) == 1 {
+					numWins += 1
+				} else {
+					numTies += 1
+				}
+				break
+			}
 		}
 
 		return nil
@@ -275,6 +300,7 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 	return containers.Statistics{
 		GamesPlayed:  numGames,
 		NumberOfWins: numWins,
+		NumberOfTies: numTies,
 		TopWords:     words,
 	}, nil
 }

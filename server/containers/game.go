@@ -202,12 +202,6 @@ func NotifyGameStarted(g *Game) error {
 	return nil
 }
 
-type Team struct {
-	First  uint
-	Second uint
-	Score  int
-}
-
 func NotifyGameEnded(game *Game) error {
 	fmt.Printf("Notify game end\n")
 
@@ -219,26 +213,25 @@ func NotifyGameEnded(game *Game) error {
 		rev[id] += 1
 	}
 	teams := int(game.NumPlayers / 2.0)
-	res := make([]Team, 0, teams)
+	game.Process.Result = make([]Result, 0, teams)
 
 	for i := 0; i < teams; i++ {
 		first, second := utils.Order(
 			game.Process.Teams[i],
 			game.Process.Teams[(i+teams)%game.NumPlayers])
 
-		team := Team{First: first, Second: second}
-		team.Score =
-			rev[team.First] + rev[team.Second]
-		res = append(res, team)
+		res := Result{FirstID: first, SecondID: second}
+		res.Score =
+			rev[res.FirstID] + rev[res.SecondID]
+		game.Process.Result = append(game.Process.Result, res)
+
 	}
 
-	sort.SliceStable(res, func(i, j int) bool {
-		return res[i].Score > res[j].Score
+	sort.SliceStable(game.Process.Result, func(i, j int) bool {
+		return game.Process.Result[i].Score > game.Process.Result[j].Score
 	})
 
-	game.Process.WinningTeam = res[0]
-
-	resp, err := CreateMessage("end", res)
+	resp, err := CreateMessage("end", game.Process.Result)
 	if err != nil {
 		return fmt.Errorf("error when marshalling end message: %w", err)
 	}

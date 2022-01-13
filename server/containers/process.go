@@ -6,7 +6,7 @@ type Process struct {
 	WordId       int
 	Storyteller  int
 	Teams        []uint
-	WinningTeam  Team
+	Result       []Result
 	GuessedWords map[string]uint
 	Mutex        *sync.RWMutex
 	GameEnd      chan struct{}
