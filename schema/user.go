@@ -10,7 +10,7 @@ import (
 
 type User struct {
 	gorm.Model
-	Email    string `gorm:"notnull"`
+	Email    string `gorm:"unique,notnull"`
 	Password []byte `gorm:"notnull" json:"-"`
 	Username string
 	Avatar   []byte
