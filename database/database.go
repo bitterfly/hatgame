@@ -119,6 +119,16 @@ func UpdateUser(db *gorm.DB, id uint, password []byte, username string) error {
 	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Update("username", username).Error
 }
 
+func UpdateUserPassword(db *gorm.DB, id uint, password []byte) error {
+	fmt.Printf("%d\n", id)
+	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Error
+}
+
+func UpdateUserUsername(db *gorm.DB, id uint, username string) error {
+	fmt.Printf("%d\n", id)
+	return db.Model(&schema.User{}).Where("id = ?", id).Update("username", username).Error
+}
+
 func Open(filename string) (*gorm.DB, error) {
 	psqlInfo, err := getPsqlInfo("psqlInfo.json")
 	if err != nil {

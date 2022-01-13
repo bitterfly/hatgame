@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/bitterfly/go-chaos/hatgame/database"
@@ -250,16 +251,25 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	newPassowrd, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		w.Write([]byte("Could not encrypt password."))
-		return
-	}
-	err = database.UpdateUser(s.DB, payload.Id, newPassowrd, user.Username)
-	if err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	strippedPassword := strings.TrimSpace(user.Password)
+	if strippedPassword != "" {
+		newPassowrd, err := bcrypt.GenerateFromPassword([]byte(strippedPassword), bcrypt.DefaultCost)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte("Could not encrypt password."))
+			return
+		}
+		err = database.UpdateUser(s.DB, payload.Id, newPassowrd, user.Username)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
+	} else {
+		err = database.UpdateUserUsername(s.DB, payload.Id, user.Username)
+		if err != nil {
+			w.WriteHeader(http.StatusInternalServerError)
+			return
+		}
 	}
 	w.WriteHeader(http.StatusOK)
 }
