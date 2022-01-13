@@ -258,7 +258,7 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 			words = append(words, containers.Word{Word: word, Count: count})
 		}
 
-		if err := tx.Model(&schema.PlayerGame{}).Distinct("game_id").Where("user_id = ?", id).Count(&numGames).Error; err != nil {
+		if err := tx.Model(&schema.PlayerGame{}).Select("game_id").Where("user_id = ?", id).Count(&numGames).Error; err != nil {
 			return err
 		}
 
