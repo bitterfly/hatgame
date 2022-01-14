@@ -244,7 +244,7 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 	var numTies int64
 	var res Result
 	err := db.Transaction(func(tx *gorm.DB) error {
-		rows, err := tx.Model(&schema.PlayerWord{}).Limit(10).Select("words.word, count(words.word) as count").Joins("left join words on player_words.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
+		rows, err := tx.Model(&schema.PlayerWord{}).Limit(5).Select("words.word, count(words.word) as count").Joins("left join words on player_words.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
 		if err != nil {
 			fmt.Printf("%s", err.Error())
 		}
