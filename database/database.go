@@ -113,24 +113,20 @@ func AddTestUsers(db *gorm.DB) []uint {
 	db.Create(&users)
 	ids := make([]uint, len(users))
 	for i, u := range users {
-		fmt.Printf("%d\n", u.ID)
 		ids[i] = u.ID
 	}
 	return ids
 }
 
 func UpdateUser(db *gorm.DB, id uint, password []byte, username string) error {
-	fmt.Printf("%d\n", id)
 	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Update("username", username).Error
 }
 
 func UpdateUserPassword(db *gorm.DB, id uint, password []byte) error {
-	fmt.Printf("%d\n", id)
 	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Error
 }
 
 func UpdateUserUsername(db *gorm.DB, id uint, username string) error {
-	fmt.Printf("%d\n", id)
 	return db.Model(&schema.User{}).Where("id = ?", id).Update("username", username).Error
 }
 
@@ -188,7 +184,6 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 		}
 
 		numTeams := int(float64(game.NumPlayers) / 2)
-		fmt.Printf("NumPlayers: %d\n", numTeams)
 		schemaResults := make([]schema.Result, 0, numTeams)
 		for _, r := range game.Process.Result {
 			schemaTeam := schema.Team{
@@ -246,7 +241,7 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		rows, err := tx.Model(&schema.PlayerWord{}).Limit(5).Select("words.word, count(words.word) as count").Joins("left join words on player_words.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
 		if err != nil {
-			fmt.Printf("%s", err.Error())
+			return err
 		}
 
 		var word string
