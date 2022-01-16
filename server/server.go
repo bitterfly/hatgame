@@ -90,7 +90,7 @@ func (s *Server) Connect(address string) error {
 }
 
 func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
-	log.Printf("Main, lol :D\n")
+	//log.Printf("Main, lol :D\n")
 }
 
 func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
@@ -107,8 +107,8 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := bcrypt.CompareHashAndPassword(dbUser.Password, []byte(user.Password)); err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
 		log.Printf("%s\n", err.Error())
+		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("Wrong email or password."))
 		return
 	}
@@ -150,7 +150,6 @@ func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fmt.Printf("%v\n", user)
 	schemaUser := &schema.User{
 		Email:    user.Email,
 		Password: hashedPassword,
@@ -225,8 +224,6 @@ func (s *Server) handleUserGet(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Could not fetch from database."))
 		return
 	}
-
-	fmt.Printf("%s, %v\n", ExtractToken(r), dbUser)
 
 	resp := map[string]interface{}{
 		"sessionToken": ExtractToken(r),
@@ -330,8 +327,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("Players: %d, Words: %d, Timer: %d, HostId: %d\n", players, numWords, timer, payload.Id)
-
 	user, err := database.GetUserByID(s.DB, payload.Id)
 	if err != nil {
 		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.Id)
@@ -369,11 +364,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.listen("[HOST]", ws, game, payload.Id)
+	s.listen(ws, game, payload.Id)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
-	log.Printf("Closing game %d\n", gameId)
 	delete(s.Games, gameId)
 	err = database.AddGame(s.DB, game)
 	if err != nil {
@@ -439,20 +433,20 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.listen("[JOIN]", ws, game, payload.Id)
+	s.listen(ws, game, payload.Id)
 }
 
-func (s *Server) listen(t string, ws *websocket.Conn, game *containers.Game, id uint) {
+func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 	msg := &containers.Message{}
 	timerGameEnd := make(chan struct{})
 	defer close(timerGameEnd)
 	errors := make(chan error)
 	defer close(errors)
+	go HandleErrors(errors)
 	message := make(chan *containers.Message, 1)
 	defer close(message)
 
 	go func(ws *websocket.Conn) {
-		defer log.Printf("Closing message goroutine.")
 		for {
 			err := ws.ReadJSON(&msg)
 			if err != nil {
@@ -465,20 +459,17 @@ func (s *Server) listen(t string, ws *websocket.Conn, game *containers.Game, id 
 	for {
 		select {
 		case <-game.Process.GameEnd:
-			log.Printf("%s Closing websocket and ending game\n", t)
 			ws.Close()
 			return
 		case msg := <-message:
 			go msg.HandleMessage(ws, game, id, timerGameEnd, errors)
-			go HandleErrors(errors)
-		default:
 		}
 	}
 }
 
 func HandleErrors(errors chan error) {
-	select {
-	case err, ok := <-errors:
+	for {
+		err, ok := <-errors
 		if !ok {
 			return
 		}

@@ -13,6 +13,15 @@ type Message struct {
 	Msg  interface{}
 }
 
+func (m Message) String() string {
+	switch m.Type {
+	case "ready":
+		return m.Type
+	default:
+		return fmt.Sprintf("%s %s", m.Type, m.Msg)
+	}
+}
+
 func CreateMessage(t string, m interface{}) ([]byte, error) {
 	return json.Marshal(Message{Type: t, Msg: m})
 }
@@ -23,7 +32,7 @@ func (msg Message) HandleMessage(
 	id uint,
 	timerGameEnd chan struct{},
 	errors chan error) {
-	log.Printf("HandleMessage: %s\n", msg.Type)
+	log.Printf("HandleMessage: %s\n", msg)
 	switch msg.Type {
 	case "word":
 		word := fmt.Sprintf("%s", msg.Msg)
@@ -64,7 +73,7 @@ func (msg Message) HandleMessage(
 				return
 			}
 			timerGameEnd <- struct{}{}
-			for i := 0; i < game.NumPlayers+1; i++ {
+			for i := 0; i < game.NumPlayers; i++ {
 				game.Process.GameEnd <- struct{}{}
 			}
 			close(game.Process.GameEnd)

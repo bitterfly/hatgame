@@ -3,7 +3,6 @@ package containers
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"math/rand"
 	"sort"
 	"sync"
@@ -79,7 +78,14 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 			WsMutex:     &sync.RWMutex{},
 			WordsMutex:  &sync.RWMutex{},
 			Users:       users},
-		Process:    Process{},
+		Process: Process{
+			Teams:        make([]uint, 0, numPlayers),
+			GuessedWords: make(map[string]uint),
+			Mutex:        &sync.RWMutex{},
+			GameEnd:      make(chan struct{}),
+			Storyteller:  0,
+			WordId:       0,
+		},
 		NumPlayers: numPlayers,
 		NumWords:   numWords,
 		Timer:      timer,
@@ -113,7 +119,6 @@ func (g *Game) Put(max int, user schema.User, ws *websocket.Conn) error {
 	if _, ok := g.Players.Ws[user.ID]; ok {
 		return fmt.Errorf("player already in game")
 	}
-	log.Printf("Adding player with id: %d\n", user.ID)
 	g.Players.Ws[user.ID] = ws
 	g.Players.WordsMutex.Lock()
 	defer g.Players.WordsMutex.Unlock()
@@ -134,7 +139,6 @@ func (g *Game) AddWord(id uint, word string) ([]byte, error) {
 	if _, ok := g.Players.Words[word]; ok {
 		return CreateMessage("error", "Already used this word")
 	}
-	fmt.Printf("Adding %s to %d\n", word, id)
 	g.Players.WordsByUser[id][word] = struct{}{}
 	g.Players.Words[word] = struct{}{}
 	return CreateMessage("word", word)
@@ -147,8 +151,6 @@ func (g *Game) CheckWordsFinished() bool {
 }
 
 func (g Game) NotifyAll(msg []byte) error {
-	fmt.Printf("Writing: %s\n", msg)
-
 	g.Players.WsMutex.RLock()
 	defer g.Players.WsMutex.RUnlock()
 	for _, ws := range g.Players.Ws {
@@ -160,28 +162,20 @@ func (g Game) NotifyAll(msg []byte) error {
 	return nil
 }
 
-func (g *Game) StartProcess() {
-	teams := make([]uint, 0, len(g.Players.Ws))
+func (g *Game) MakeTeams() {
 	g.Players.WordsMutex.RLock()
 	for id := range g.Players.WordsByUser {
-		teams = append(teams, id)
+		g.Process.Teams = append(g.Process.Teams, id)
 
 	}
 	g.Players.WordsMutex.RUnlock()
 
 	rand.Shuffle(
-		len(teams),
-		func(i, j int) { teams[i], teams[j] = teams[j], teams[i] },
+		len(g.Process.Teams),
+		func(i, j int) {
+			g.Process.Teams[i], g.Process.Teams[j] = g.Process.Teams[j], g.Process.Teams[i]
+		},
 	)
-
-	g.Process = Process{
-		Teams:        teams,
-		GuessedWords: make(map[string]uint),
-		Mutex:        &sync.RWMutex{},
-		GameEnd:      make(chan struct{}),
-		Storyteller:  0,
-		WordId:       0,
-	}
 }
 
 func NotifyGameStarted(g *Game) error {
@@ -192,7 +186,7 @@ func NotifyGameStarted(g *Game) error {
 		if err != nil {
 			return fmt.Errorf("error when marshalling team message: %w", err)
 		}
-		ws, _ := g.Players.Ws[id]
+		ws := g.Players.Ws[id]
 		err = ws.WriteMessage(websocket.TextMessage, resp)
 		if err != nil {
 			return fmt.Errorf("error when sending team message: %w", err)
@@ -203,8 +197,6 @@ func NotifyGameStarted(g *Game) error {
 }
 
 func NotifyGameEnded(game *Game) error {
-	fmt.Printf("Notify game end\n")
-
 	game.Process.Mutex.RLock()
 	defer game.Process.Mutex.RUnlock()
 
@@ -248,8 +240,7 @@ func NotifyStoryteller(game *Game) error {
 }
 
 func (game *Game) Start(id uint) error {
-	game.StartProcess()
-	log.Printf("Teams: %v\nWords: %v\n", game.Process.Teams, game.Players.Words)
+	game.MakeTeams()
 	err := NotifyGameStarted(game)
 	if err != nil {
 		return err
@@ -264,7 +255,7 @@ func NotifyWord(game *Game, story string) error {
 	}
 
 	game.Players.WsMutex.RLock()
-	ws, _ := game.Players.Ws[game.Process.Teams[game.Process.Storyteller]]
+	ws := game.Players.Ws[game.Process.Teams[game.Process.Storyteller]]
 	game.Players.WsMutex.RUnlock()
 
 	return ws.WriteMessage(websocket.TextMessage, resp)
@@ -272,7 +263,6 @@ func NotifyWord(game *Game, story string) error {
 
 func MakeTurn(id uint, game *Game, timerGameEnd chan struct{}) error {
 	story, found := game.nextWord()
-	fmt.Printf("Story chosen: %s\n", story)
 
 	if !found {
 		return NotifyGameEnded(game)
@@ -307,7 +297,7 @@ func tick(game *Game, timerDone chan struct{}, timerGameEnd chan struct{}, timer
 				return
 			}
 			i -= 1
-			fmt.Printf("Tick: %d\n", i)
+			// fmt.Printf("Tick: %d\n", i)
 
 			resp, err := CreateMessage("tick", i)
 			if err != nil {
