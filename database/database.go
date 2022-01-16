@@ -282,7 +282,6 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 				} else {
 					numTies += 1
 				}
-				break
 			}
 		}
 
