@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -60,14 +61,17 @@ func (s *Server) getGameId() uint {
 }
 
 func (s *Server) Connect(address string) error {
+	authRouter := s.Mux.NewRoute().Subrouter()
+	authRouter.Use(s.authHandler)
+	authRouter.HandleFunc("/api/user/id/{id}", s.handleUserShow).Methods("GET")
+	authRouter.HandleFunc("/api/game/id/{id}", s.handleGameShow).Methods("POST")
+	authRouter.HandleFunc("/api/user/change", s.handleUserChange).Methods("POST")
+	authRouter.HandleFunc("/api/user", s.handleUserGet).Methods("POST")
+	authRouter.HandleFunc("/api/stat", s.handleStat).Methods("GET")
+
 	s.Mux.HandleFunc("/api/", s.handleMain)
 	s.Mux.HandleFunc("/api/login", s.handleUserLogin).Methods("POST")
 	s.Mux.HandleFunc("/api/register", s.handleUserRegister).Methods("POST")
-	s.Mux.HandleFunc("/api/stat", s.handleStat).Methods("GET")
-	s.Mux.HandleFunc("/api/user/id/{id}", s.handleUserShow).Methods("GET")
-	s.Mux.HandleFunc("/api/game/id/{id}", s.handleGameShow).Methods("POST")
-	s.Mux.HandleFunc("/api/user/change", s.handleUserChange).Methods("POST")
-	s.Mux.HandleFunc("/api/user", s.handleUserGet).Methods("POST")
 	s.Mux.HandleFunc("/api/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/api/join/{sessionToken}/{id}", s.handleJoin)
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
@@ -87,6 +91,19 @@ func (s *Server) Connect(address string) error {
 		return fmt.Errorf("error connecting to server %s: %w", address, err)
 	}
 	return nil
+}
+
+func (s *Server) authHandler(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		payload, err := s.Token.CheckTokenRequest(w, r)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+
+		ctx := context.WithValue(r.Context(), "id", payload.Id)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
 }
 
 func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
@@ -166,12 +183,6 @@ func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
-	_, err := s.Token.CheckTokenRequest(w, r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
@@ -196,13 +207,13 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleStat(w http.ResponseWriter, r *http.Request) {
-	payload, err := s.Token.CheckTokenRequest(w, r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
+	id, ok := r.Context().Value("id").(uint)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	stat, err := database.GetUserStatistics(s.DB, payload.Id)
+	stat, err := database.GetUserStatistics(s.DB, id)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -212,13 +223,13 @@ func (s *Server) handleStat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserGet(w http.ResponseWriter, r *http.Request) {
-	payload, err := s.Token.CheckTokenRequest(w, r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
+	id, ok := r.Context().Value("id").(uint)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
-	dbUser, err := database.GetUserByID(s.DB, payload.Id)
+	dbUser, err := database.GetUserByID(s.DB, id)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Could not fetch from database."))
@@ -235,12 +246,6 @@ func (s *Server) handleUserGet(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
-	_, err := s.Token.CheckTokenRequest(w, r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
-		return
-	}
-
 	vars := mux.Vars(r)
 	id, ok := vars["id"]
 	if !ok {
@@ -268,9 +273,9 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
-	payload, err := s.Token.CheckTokenRequest(w, r)
-	if err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
+	id, ok := r.Context().Value("id").(uint)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
 
@@ -289,13 +294,13 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Could not encrypt password."))
 			return
 		}
-		err = database.UpdateUser(s.DB, payload.Id, newPassowrd, user.Username)
+		err = database.UpdateUser(s.DB, id, newPassowrd, user.Username)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	} else {
-		err = database.UpdateUserUsername(s.DB, payload.Id, user.Username)
+		err = database.UpdateUserUsername(s.DB, id, user.Username)
 		if err != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
