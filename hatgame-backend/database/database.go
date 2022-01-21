@@ -22,50 +22,141 @@ type psqlInfo struct {
 	Sslmode  string
 }
 
+type ErrorType int
+
+const (
+	InsertError ErrorType = iota
+	ConflictError
+	OpenError
+	ConfigError
+	MigrateError
+	UpdateError
+	QueryError
+)
+
+type DatabaseError struct {
+	ErrorType ErrorType
+	msg       error
+}
+
+func newMigrateError(err error) *DatabaseError {
+	if err == nil {
+		return nil
+	}
+	return &DatabaseError{
+		ErrorType: MigrateError,
+		msg:       fmt.Errorf("database migrate error: %w", err),
+	}
+}
+
+func newConflictError(err error) *DatabaseError {
+	if err == nil {
+		return nil
+	}
+	return &DatabaseError{
+		ErrorType: ConflictError,
+		msg:       fmt.Errorf("database create error: %w", err),
+	}
+}
+
+func newOpenError(err error) *DatabaseError {
+	if err == nil {
+		return nil
+	}
+	return &DatabaseError{
+		ErrorType: OpenError,
+		msg:       fmt.Errorf("database open error: %w", err),
+	}
+}
+
+func newInsertError(err error) *DatabaseError {
+	if err == nil {
+		return nil
+	}
+	return &DatabaseError{
+		ErrorType: InsertError,
+		msg:       fmt.Errorf("database insert error: %w", err),
+	}
+}
+
+func newConfigErrror(err error) *DatabaseError {
+	if err == nil {
+		return nil
+	}
+	return &DatabaseError{
+		ErrorType: ConfigError,
+		msg:       fmt.Errorf("database config error: %w", err),
+	}
+}
+
+func newUpdateError(err error) *DatabaseError {
+	if err == nil {
+		return nil
+	}
+	return &DatabaseError{
+		ErrorType: UpdateError,
+		msg:       fmt.Errorf("database update error: %w", err),
+	}
+}
+
+func newQueryError(err error) *DatabaseError {
+	if err == nil {
+		return nil
+	}
+	return &DatabaseError{
+		ErrorType: QueryError,
+		msg:       fmt.Errorf("database query error: %w", err),
+	}
+}
+
+func (e *DatabaseError) Error() string {
+	return e.msg.Error()
+}
+
 func (p psqlInfo) String() string {
 	return fmt.Sprintf("host=%s port=%d user=%s "+
 		"password=%s dbname=%s sslmode=%s",
 		p.Host, p.Port, p.User, p.Password, p.Dbname, p.Sslmode)
 }
 
-func getPsqlInfo(filename string) (*psqlInfo, error) {
+func getPsqlInfo(filename string) (*psqlInfo, *DatabaseError) {
 	jsonFile, err := os.Open("psqlInfo.json")
 	if err != nil {
-		return nil, err
+		return nil, newOpenError(err)
 	}
 	data, err := io.ReadAll(jsonFile)
 	if err != nil {
-		return nil, err
+		return nil, newConfigErrror(err)
 	}
 	var psqlInfo psqlInfo
 	err = json.Unmarshal([]byte(data), &psqlInfo)
 	if err != nil {
-		return nil, err
+		return nil, newConfigErrror(err)
 	}
 	return &psqlInfo, nil
 }
 
-func Automigrate(db *gorm.DB) error {
+func Automigrate(db *gorm.DB) *DatabaseError {
 	if err := db.AutoMigrate(&schema.User{}); err != nil {
-		return err
+		return newMigrateError(fmt.Errorf("schema user, %w", err))
 	}
 	if err := db.AutoMigrate(&schema.Team{}); err != nil {
-		return err
+		return newMigrateError(fmt.Errorf("schema team, %w", err))
 	}
 	if err := db.AutoMigrate(&schema.Result{}); err != nil {
-		return err
+		return newMigrateError(fmt.Errorf("schema result, %w", err))
 	}
 	if err := db.AutoMigrate(&schema.Game{}); err != nil {
-		return err
+		return newMigrateError(fmt.Errorf("schema game, %w", err))
 	}
 	if err := db.AutoMigrate(&schema.Word{}); err != nil {
-		return err
+		return newMigrateError(fmt.Errorf("schema word, %w", err))
 	}
 	if err := db.AutoMigrate(&schema.PlayerWord{}); err != nil {
-		return err
+		return newMigrateError(fmt.Errorf("schema player word, %w", err))
 	}
 	if err := db.AutoMigrate(&schema.PlayerGame{}); err != nil {
-		return err
+		return newMigrateError(fmt.Errorf("schema player game, %w", err))
 	}
 	return nil
 }
@@ -118,51 +209,66 @@ func AddTestUsers(db *gorm.DB) []uint {
 	return ids
 }
 
-func UpdateUser(db *gorm.DB, id uint, password []byte, username string) error {
-	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Update("username", username).Error
+func UpdateUser(db *gorm.DB, id uint, password []byte, username string) *DatabaseError {
+	return newUpdateError(
+		db.Model(&schema.User{}).
+			Where("id = ?", id).
+			Update("password", password).
+			Update("username", username).Error,
+	)
 }
 
-func UpdateUserPassword(db *gorm.DB, id uint, password []byte) error {
-	return db.Model(&schema.User{}).Where("id = ?", id).Update("password", password).Error
+func UpdateUserPassword(db *gorm.DB, id uint, password []byte) *DatabaseError {
+	return newUpdateError(db.Model(&schema.User{}).
+		Where("id = ?", id).
+		Update("password", password).Error)
 }
 
-func UpdateUserUsername(db *gorm.DB, id uint, username string) error {
-	return db.Model(&schema.User{}).Where("id = ?", id).Update("username", username).Error
+func UpdateUserUsername(db *gorm.DB, id uint, username string) *DatabaseError {
+	return newUpdateError(
+		db.Model(&schema.User{}).
+			Where("id = ?", id).
+			Update("username", username).Error)
 }
 
-func Open(filename string) (*gorm.DB, error) {
-	psqlInfo, err := getPsqlInfo("psqlInfo.json")
-	if err != nil {
-		return nil, err
+func Open(filename string) (*gorm.DB, *DatabaseError) {
+	psqlInfo, derr := getPsqlInfo("psqlInfo.json")
+	if derr != nil {
+		return nil, derr
 	}
+
 	db, err := gorm.Open(postgres.Open(psqlInfo.String()), &gorm.Config{})
 	if err != nil {
-		return nil, err
+		return nil, newOpenError(err)
 	}
 	return db, nil
 }
 
-func AddUser(db *gorm.DB, user *schema.User) (uint, error) {
+func AddUser(db *gorm.DB, user *schema.User) (uint, *DatabaseError) {
+	if _, err := GetUserByEmail(db, user.Email); err == nil {
+		return 0, newConflictError(fmt.Errorf("User with that email already exists."))
+	}
+
 	if err := db.Create(user).Error; err != nil {
-		return 0, err
+		return 0, newQueryError(err)
 	}
 	return user.ID, nil
 }
 
-func GetUserByID(db *gorm.DB, id uint) (*schema.User, error) {
+func GetUserByID(db *gorm.DB, id uint) (*schema.User, *DatabaseError) {
 	var user schema.User
 	err := db.First(&user, id).Error
-	return &user, err
+	return &user, newQueryError(err)
 }
 
-func GetUserByEmail(db *gorm.DB, email string) (*schema.User, error) {
+func GetUserByEmail(db *gorm.DB, email string) (*schema.User, *DatabaseError) {
 	var user schema.User
 	err := db.Where("email = ?", email).First(&user).Error
-	return &user, err
+	return &user, newQueryError(err)
 }
 
-func AddGame(db *gorm.DB, game *containers.Game) error {
-	return db.Transaction(func(tx *gorm.DB) error {
+func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
+	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
 		playerWords := make([]schema.PlayerWord, 0, len(game.Players.Words))
 		for userId, words := range game.Players.WordsByUser {
 			for word := range words {
@@ -221,18 +327,18 @@ func AddGame(db *gorm.DB, game *containers.Game) error {
 		}
 
 		return nil
-	})
+	}))
 
 }
 
-type Result struct {
-	FirstID  uint
-	SecondID uint
-	Score    int
-	ID       uint
-}
+func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, *DatabaseError) {
+	type Result struct {
+		FirstID  uint
+		SecondID uint
+		Score    int
+		ID       uint
+	}
 
-func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 	words := make([]containers.Word, 0)
 	var numGames int64
 	var numWins int64
@@ -289,7 +395,7 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, error) {
 	})
 
 	if err != nil {
-		return containers.Statistics{}, err
+		return containers.Statistics{}, newQueryError(err)
 	}
 	return containers.Statistics{
 		GamesPlayed:  numGames,

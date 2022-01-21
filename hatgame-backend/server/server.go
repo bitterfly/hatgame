@@ -117,8 +117,8 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Bad user json."))
 		return
 	}
-	dbUser, err := database.GetUserByEmail(s.DB, user.Email)
-	if err != nil {
+	dbUser, derr := database.GetUserByEmail(s.DB, user.Email)
+	if derr != nil {
 		w.WriteHeader(http.StatusUnauthorized)
 		w.Write([]byte("Wrong email or password."))
 		return
@@ -154,12 +154,6 @@ func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if _, err := database.GetUserByEmail(s.DB, user.Email); err == nil {
-		w.WriteHeader(http.StatusConflict)
-		w.Write([]byte("User with that email already exists."))
-		return
-	}
-
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
 	if err != nil {
 		w.WriteHeader(http.StatusInternalServerError)
@@ -173,9 +167,15 @@ func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
 		Username: user.Username,
 	}
 
-	id, err := database.AddUser(s.DB, schemaUser)
-	if err != nil {
+	id, derr := database.AddUser(s.DB, schemaUser)
+	if derr != nil {
+		if derr.ErrorType == database.ConflictError {
+			w.WriteHeader(http.StatusConflict)
+			w.Write([]byte(derr.Error()))
+			return
+		}
 		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(derr.Error()))
 		return
 	}
 	w.WriteHeader(http.StatusOK)
@@ -196,8 +196,8 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("Id is not uint."))
 		return
 	}
-	user, err := database.GetUserByID(s.DB, uint(idU))
-	if err != nil {
+	user, derr := database.GetUserByID(s.DB, uint(idU))
+	if derr != nil {
 		w.WriteHeader(http.StatusNotFound)
 		w.Write([]byte(fmt.Sprintf("No user with id: %d.", idU)))
 		return
@@ -213,8 +213,8 @@ func (s *Server) handleStat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	stat, err := database.GetUserStatistics(s.DB, id)
-	if err != nil {
+	stat, derr := database.GetUserStatistics(s.DB, id)
+	if derr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
@@ -229,8 +229,8 @@ func (s *Server) handleUserGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	dbUser, err := database.GetUserByID(s.DB, id)
-	if err != nil {
+	dbUser, derr := database.GetUserByID(s.DB, id)
+	if derr != nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		w.Write([]byte("Could not fetch from database."))
 		return
@@ -294,14 +294,14 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 			w.Write([]byte("Could not encrypt password."))
 			return
 		}
-		err = database.UpdateUser(s.DB, id, newPassowrd, user.Username)
-		if err != nil {
+		derr := database.UpdateUser(s.DB, id, newPassowrd, user.Username)
+		if derr != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
 	} else {
-		err = database.UpdateUserUsername(s.DB, id, user.Username)
-		if err != nil {
+		derr := database.UpdateUserUsername(s.DB, id, user.Username)
+		if derr != nil {
 			w.WriteHeader(http.StatusInternalServerError)
 			return
 		}
@@ -332,8 +332,8 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := database.GetUserByID(s.DB, payload.Id)
-	if err != nil {
+	user, derr := database.GetUserByID(s.DB, payload.Id)
+	if derr != nil {
 		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.Id)
 		return
 	}
@@ -374,8 +374,8 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	defer s.Mutex.Unlock()
 
 	delete(s.Games, gameId)
-	err = database.AddGame(s.DB, game)
-	if err != nil {
+	derr = database.AddGame(s.DB, game)
+	if derr != nil {
 		log.Printf("Error when inserting game to database: %s", err.Error())
 	}
 }
@@ -395,8 +395,8 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := database.GetUserByID(s.DB, payload.Id)
-	if err != nil {
+	user, derr := database.GetUserByID(s.DB, payload.Id)
+	if derr != nil {
 		log.Printf("[handleJoin] Could not get user info for user: %d\n", payload.Id)
 		return
 	}
