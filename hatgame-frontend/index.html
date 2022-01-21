@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <title>Hatgame</title>
+    <link rel="stylesheet" href="sass/output.css" />
+    <script type="text/javascript" src="elm.js"></script>
+    <script type="text/javascript" src="config.js"></script>
+  </head>
+
+  <body>
+    <div id="myapp"></div>
+  </body>
+
+  <script type="text/javascript">
+    const websocketsBackend = window.CONFIG.websocketsBackend;
+
+    var app = Elm.Main.init({
+      node: document.getElementById("myapp"),
+      flags: window.CONFIG.httpBackend,
+    });
+
+    var hostWs;
+    var joinWs;
+
+    app.ports.sendJoin.subscribe(function (message) {
+      let sessionToken = message[0];
+      let id = message[1];
+      joinWs = new WebSocket(`${websocketsBackend}/join/${sessionToken}/${id}`);
+      console.log(`${websocketsBackend}/join/${sessionToken}/${id}`);
+      joinWs.addEventListener("message", function (event) {
+        app.ports.messageReceiver.send(event.data);
+      });
+    });
+
+    app.ports.sendHost.subscribe(function (message) {
+      let sessionToken = message[0];
+      let players = message[1][0];
+      let words = message[1][1];
+      let timer = message[1][2];
+      hostWs = new WebSocket(
+        `${websocketsBackend}/host/${sessionToken}/${players}/${words}/${timer}`
+      );
+      console.log(
+        `${websocketsBackend}/host/${sessionToken}/${players}/${timer}`
+      );
+      hostWs.addEventListener("message", function (event) {
+        app.ports.messageReceiver.send(event.data);
+      });
+    });
+
+    app.ports.sendMessage.subscribe(function (message) {
+      msg = '{"type": "word", "msg": "' + message + '"}';
+      if (joinWs != undefined) {
+        console.log("Sending to joinWs: " + msg);
+        joinWs.send(msg);
+      }
+      if (hostWs != undefined) {
+        console.log("sending to host: " + msg);
+        hostWs.send(msg);
+      }
+    });
+
+    app.ports.sendReady.subscribe(function (message) {
+      msg = '{"type": "ready"}';
+      if (joinWs != undefined) {
+        console.log("Sending to joinWs: " + msg);
+        joinWs.send(msg);
+      }
+      if (hostWs != undefined) {
+        console.log("sending to host: " + msg);
+        hostWs.send(msg);
+      }
+    });
+
+    app.ports.sendGuessed.subscribe(function (message) {
+      msg = '{"type": "guess", "msg": "' + message + '"}';
+      if (joinWs != undefined) {
+        console.log("Sending to joinWs: " + msg);
+        joinWs.send(msg);
+      }
+      if (hostWs != undefined) {
+        console.log("sending to host: " + msg);
+        hostWs.send(msg);
+      }
+    });
+  </script>
+</html>

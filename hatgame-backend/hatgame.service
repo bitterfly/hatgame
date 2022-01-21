@@ -1,0 +1,16 @@
+[Unit]
+Description=Hatgame backend
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+ExecStart=/var/www/hatgame
+WorkingDirectory=/var/www
+
+
+[Install]
+WantedBy=multi-user.target
