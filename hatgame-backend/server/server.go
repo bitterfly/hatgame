@@ -68,6 +68,7 @@ func (s *Server) Connect(address string) error {
 	authRouter.HandleFunc("/api/user/change", s.handleUserChange).Methods("POST")
 	authRouter.HandleFunc("/api/user", s.handleUserGet).Methods("POST")
 	authRouter.HandleFunc("/api/stat", s.handleStat).Methods("GET")
+	authRouter.HandleFunc("/api/recommend", s.handleRecommend).Methods("POST")
 
 	s.Mux.HandleFunc("/api/", s.handleMain)
 	s.Mux.HandleFunc("/api/login", s.handleUserLogin).Methods("POST")
@@ -222,6 +223,35 @@ func (s *Server) handleStat(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(stat)
 }
 
+func (s *Server) handleRecommend(w http.ResponseWriter, r *http.Request) {
+	id, ok := r.Context().Value("id").(uint)
+	if !ok {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+
+	nStr := r.URL.Query().Get("n")
+	if nStr == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Missing required query param \"n\"."))
+		return
+	}
+	n, err := strconv.Atoi(nStr)
+	if err != nil {
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte("Could not parse query param \"n\" as integer."))
+		return
+	}
+
+	result, derr := database.RecommendWord(s.DB, n, id)
+	if derr != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(result)
+}
+
 func (s *Server) handleUserGet(w http.ResponseWriter, r *http.Request) {
 	id, ok := r.Context().Value("id").(uint)
 	if !ok {
@@ -368,7 +398,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[handleHost] Could not notify all players: %s", err.Error())
 		return
 	}
-
 	s.listen(ws, game, payload.Id)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
