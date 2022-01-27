@@ -5,10 +5,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"time"
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
+	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"golang.org/x/crypto/bcrypt"
+	"golang.org/x/exp/rand"
+	"gonum.org/v1/gonum/stat/sampleuv"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -265,6 +269,50 @@ func GetUserByEmail(db *gorm.DB, email string) (*schema.User, *DatabaseError) {
 	var user schema.User
 	err := db.Where("email = ?", email).First(&user).Error
 	return &user, newQueryError(err)
+}
+
+func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
+	rows, err := db.Raw("select word, count(*) from words left join player_words on words.id = player_words.word_id where (player_words.author_id <> ? or player_words.author_id is null) group by words.id", id).Rows()
+	if err != nil {
+		return nil, newQueryError(err)
+	}
+
+	words := make([]string, 0)
+	weights := make([]float64, 0)
+	sum := 0
+	var word string
+	var count int
+	for rows.Next() {
+		err = rows.Scan(&word, &count)
+		if err != nil {
+			return nil, newQueryError(err)
+		}
+		words = append(words, word)
+		weights = append(weights, float64(count))
+
+		sum += count
+	}
+
+	for i, _ := range weights {
+		weights[i] = float64(sum) - weights[i]
+	}
+
+	sampler := sampleuv.NewWeighted(
+		weights,
+		rand.New(rand.NewSource(uint64(time.Now().UnixNano()))),
+	)
+	resSize := utils.Min(len(weights), n)
+
+	result := make([]string, resSize, resSize)
+	for i := 0; i < resSize; i++ {
+		index, ok := sampler.Take()
+		if !ok {
+			return nil, newQueryError(fmt.Errorf("fail to pick a random index"))
+		}
+		fmt.Printf(words[index])
+		result[i] = words[index]
+	}
+	return result, nil
 }
 
 func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {

@@ -44,3 +44,10 @@ func Order(a, b uint) (uint, uint) {
 	}
 	return b, a
 }
+
+func Min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

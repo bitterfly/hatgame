@@ -9,6 +9,8 @@ require (
 	github.com/gorilla/websocket v1.4.2
 	github.com/lib/pq v1.10.4
 	golang.org/x/crypto v0.0.0-20211215153901-e495a2d5b3d3
+	golang.org/x/exp v0.0.0-20220126164734-073fb1339172
+	gonum.org/v1/gonum v0.9.3
 	gorm.io/driver/postgres v1.2.3
 	gorm.io/gorm v1.22.4
 )
