@@ -472,8 +472,6 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 	msg := &containers.Message{}
-	timerGameEnd := make(chan struct{})
-	defer close(timerGameEnd)
 	errors := make(chan error)
 	defer close(errors)
 	go HandleErrors(errors)
@@ -492,11 +490,13 @@ func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 
 	for {
 		select {
-		case <-game.Process.GameEnd:
-			ws.Close()
-			return
+		case _, ok := <-game.Process.GameEnd:
+			if !ok {
+				ws.Close()
+				return
+			}
 		case msg := <-message:
-			go msg.HandleMessage(ws, game, id, timerGameEnd, errors)
+			go msg.HandleMessage(ws, game, id, errors)
 		}
 	}
 }
