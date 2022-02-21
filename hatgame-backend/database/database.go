@@ -318,6 +318,19 @@ func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
 	return result, nil
 }
 
+func AddWords(db *gorm.DB, id uint, words []string) *DatabaseError {
+	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
+		schemaWords := make([]schema.Word, len(words), len(words))
+		for i, w := range words {
+			schemaWords[i] = schema.Word{
+				Word: w,
+			}
+		}
+
+		return nil
+	}))
+}
+
 func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
 	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
 		numTeams := int(float64(game.NumPlayers) / 2)
