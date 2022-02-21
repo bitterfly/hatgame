@@ -292,9 +292,11 @@ func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
 
 		sum += count
 	}
-
-	for i, _ := range weights {
-		weights[i] = float64(sum) - weights[i]
+	
+	if len(weights) != 1 {
+		for i, _ := range weights {
+			weights[i] = float64(sum) - weights[i]
+		}
 	}
 
 	sampler := sampleuv.NewWeighted(
