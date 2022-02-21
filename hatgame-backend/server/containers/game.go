@@ -261,7 +261,7 @@ func NotifyWord(game *Game, story string) error {
 	return ws.WriteMessage(websocket.TextMessage, resp)
 }
 
-func MakeTurn(id uint, game *Game, timerGameEnd chan struct{}) error {
+func MakeTurn(id uint, game *Game) error {
 	story, found := game.nextWord()
 
 	if !found {
@@ -275,23 +275,39 @@ func MakeTurn(id uint, game *Game, timerGameEnd chan struct{}) error {
 
 	timer := time.NewTicker(1 * time.Second)
 	timerDone := make(chan struct{})
-	go tick(game, timerDone, timerGameEnd, timer)
-	time.Sleep(time.Duration(game.Timer) * time.Second)
-	timer.Stop()
-	timerDone <- struct{}{}
+	go tick(game, timerDone, timer)
+	go func(timerDone chan struct{}) {
+		time.Sleep(time.Duration(game.Timer) * time.Second)
+		timer.Stop()
+		close(timerDone)
+	}(timerDone)
 
-	game.Process.Storyteller = (game.Process.Storyteller + 1) % game.NumPlayers
-	return NotifyStoryteller(game)
+	select {
+	case _, ok := <-game.Process.GameEnd:
+		if !ok {
+			return nil
+		}
+	case _, ok := <-timerDone:
+		if !ok {
+			game.Process.Storyteller = (game.Process.Storyteller + 1) % game.NumPlayers
+			return NotifyStoryteller(game)
+		}
+	}
+	return nil
 }
 
-func tick(game *Game, timerDone chan struct{}, timerGameEnd chan struct{}, timer *time.Ticker) {
+func tick(game *Game, timerDone chan struct{}, timer *time.Ticker) {
 	i := game.Timer
+	defer fmt.Printf("Closing tick\n")
+
 	for {
 		select {
 		case <-timerDone:
 			return
-		case <-timerGameEnd:
-			return
+		case _, ok := <-game.Process.GameEnd:
+			if !ok {
+				return
+			}
 		case _, ok := <-timer.C:
 			if !ok {
 				return

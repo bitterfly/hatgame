@@ -156,8 +156,11 @@ func Automigrate(db *gorm.DB) *DatabaseError {
 	if err := db.AutoMigrate(&schema.Word{}); err != nil {
 		return newMigrateError(fmt.Errorf("schema word, %w", err))
 	}
-	if err := db.AutoMigrate(&schema.PlayerWord{}); err != nil {
-		return newMigrateError(fmt.Errorf("schema player word, %w", err))
+	if err := db.AutoMigrate(&schema.UserDictionary{}); err != nil {
+		return newMigrateError(fmt.Errorf("schema user dictionary, %w", err))
+	}
+	if err := db.AutoMigrate(&schema.GameWord{}); err != nil {
+		return newMigrateError(fmt.Errorf("schema game word, %w", err))
 	}
 	if err := db.AutoMigrate(&schema.PlayerGame{}); err != nil {
 		return newMigrateError(fmt.Errorf("schema player game, %w", err))
@@ -272,7 +275,7 @@ func GetUserByEmail(db *gorm.DB, email string) (*schema.User, *DatabaseError) {
 }
 
 func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
-	rows, err := db.Raw("select word, count(*) from words left join player_words on words.id = player_words.word_id where (player_words.author_id <> ? or player_words.author_id is null) group by words.id", id).Rows()
+	rows, err := db.Raw("select word, count(*) from words left join user_dictionaries on words.id = user_dictionaries.word_id where (user_dictionaries.author_id <> ? or user_dictionaries.author_id is null) group by words.id", id).Rows()
 	if err != nil {
 		return nil, newQueryError(err)
 	}
@@ -317,28 +320,21 @@ func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
 	return result, nil
 }
 
-func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
+func AddWords(db *gorm.DB, id uint, words []string) *DatabaseError {
 	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
-		playerWords := make([]schema.PlayerWord, 0, len(game.Players.Words))
-		for userId, words := range game.Players.WordsByUser {
-			for word := range words {
-				schemaWord := schema.Word{Word: word}
-				if err := tx.Where("word = ?", word).FirstOrCreate(&schemaWord).Error; err != nil {
-					return err
-				}
-
-				playerWords = append(
-					playerWords, schema.PlayerWord{
-						AuthorID:    userId,
-						GuessedByID: game.Process.GuessedWords[word],
-						WordID:      schemaWord.ID})
+		schemaWords := make([]schema.Word, len(words), len(words))
+		for i, w := range words {
+			schemaWords[i] = schema.Word{
+				Word: w,
 			}
 		}
 
-		if err := tx.Create(playerWords).Error; err != nil {
-			return err
-		}
+		return nil
+	}))
+}
 
+func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
+	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
 		numTeams := int(float64(game.NumPlayers) / 2)
 		schemaResults := make([]schema.Result, 0, numTeams)
 		for _, r := range game.Process.Result {
@@ -356,12 +352,11 @@ func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
 		}
 
 		schemaGame := &schema.Game{
-			UserID:      game.Host,
-			NumPlayers:  game.NumPlayers,
-			Timer:       game.Timer,
-			NumWords:    game.NumWords,
-			PlayerWords: playerWords,
-			Result:      schemaResults,
+			UserID:     game.Host,
+			NumPlayers: game.NumPlayers,
+			Timer:      game.Timer,
+			NumWords:   game.NumWords,
+			Result:     schemaResults,
 		}
 
 		if err := tx.Create(schemaGame).Error; err != nil {
@@ -376,9 +371,37 @@ func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
 			}
 		}
 
+		gameWords := make([]schema.GameWord, 0, len(game.Players.Words))
+		for userId, words := range game.Players.WordsByUser {
+			for word := range words {
+				schemaWord := schema.Word{Word: word}
+				if err := tx.Where("word = ?", word).FirstOrCreate(&schemaWord).Error; err != nil {
+					return err
+				}
+				userDictionary := schema.UserDictionary{
+					AuthorID: userId,
+					WordID:   schemaWord.ID,
+				}
+				if err := tx.Where("author_id = ? AND word_id = ?", userId, schemaWord.ID).
+					FirstOrCreate(&userDictionary).Error; err != nil {
+					return err
+				}
+
+				gameWords = append(gameWords, schema.GameWord{
+					PlayerWordID: userDictionary.ID,
+					GuessedByID:  game.Process.GuessedWords[word],
+					GameID:       schemaGame.ID,
+				})
+
+			}
+		}
+
+		if err := tx.Create(gameWords).Error; err != nil {
+			return err
+		}
+
 		return nil
 	}))
-
 }
 
 func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, *DatabaseError) {
@@ -395,7 +418,7 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, *DatabaseEr
 	var numTies int64
 	var res Result
 	err := db.Transaction(func(tx *gorm.DB) error {
-		rows, err := tx.Model(&schema.PlayerWord{}).Limit(5).Select("words.word, count(words.word) as count").Joins("left join words on player_words.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
+		rows, err := tx.Model(&schema.UserDictionary{}).Limit(5).Select("words.word, count(words.word) as count").Joins("left join words on user_dictionaries.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
 		if err != nil {
 			return err
 		}

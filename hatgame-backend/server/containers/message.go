@@ -30,7 +30,6 @@ func (msg Message) HandleMessage(
 	ws *websocket.Conn,
 	game *Game,
 	id uint,
-	timerGameEnd chan struct{},
 	errors chan error) {
 	log.Printf("HandleMessage: %s\n", msg)
 	switch msg.Type {
@@ -55,7 +54,7 @@ func (msg Message) HandleMessage(
 			}
 		}
 	case "ready":
-		err := MakeTurn(id, game, timerGameEnd)
+		err := MakeTurn(id, game)
 		if err != nil {
 			errors <- err
 			return
@@ -71,10 +70,6 @@ func (msg Message) HandleMessage(
 			if err != nil {
 				errors <- err
 				return
-			}
-			timerGameEnd <- struct{}{}
-			for i := 0; i < game.NumPlayers; i++ {
-				game.Process.GameEnd <- struct{}{}
 			}
 			close(game.Process.GameEnd)
 			return
