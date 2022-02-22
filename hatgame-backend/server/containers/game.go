@@ -180,6 +180,7 @@ func (g *Game) MakeTeams() {
 
 func NotifyGameStarted(g *Game) error {
 	g.Players.WsMutex.RLock()
+	defer g.Players.WsMutex.RUnlock()
 	for i, id := range g.Process.Teams {
 		resp, err := CreateMessage("team",
 			g.Process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers])
@@ -192,7 +193,6 @@ func NotifyGameStarted(g *Game) error {
 			return fmt.Errorf("error when sending team message: %w", err)
 		}
 	}
-	g.Players.WsMutex.RUnlock()
 	return nil
 }
 
