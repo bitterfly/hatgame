@@ -68,6 +68,7 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 	users := make(map[uint]schema.User)
 	users[host.ID] = host
 	words := make(map[string]struct{})
+    rand.Seed(time.Now().UnixNano())
 
 	return &Game{
 		Id: gameId,
