@@ -22,12 +22,17 @@ import (
 	"gorm.io/gorm"
 )
 
+type Game struct {
+	Players map[uint]*websocket.Conn
+	State   *containers.Game
+}
+
 type Server struct {
 	Mux      *mux.Router
 	Server   *http.Server
 	DB       *gorm.DB
 	Token    Token
-	Games    map[uint]*containers.Game
+	Games    map[uint]Game
 	Mutex    *sync.RWMutex
 	Upgrader websocket.Upgrader
 }
@@ -37,7 +42,7 @@ func New(db *gorm.DB) *Server {
 		DB:    db,
 		Mux:   mux.NewRouter(),
 		Token: NewToken(32),
-		Games: make(map[uint]*containers.Game),
+		Games: make(map[uint]Game),
 		Mutex: &sync.RWMutex{},
 		Upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -341,7 +346,7 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	players, err := utils.ParseInt(vars, "players")
+	numPlayers, err := utils.ParseInt(vars, "players")
 	if err != nil {
 		log.Printf("[handleHost] Could not parse \"player\" var: %s", err.Error())
 		return
@@ -372,7 +377,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	gameId := s.getGameId()
 	s.Mutex.Unlock()
 
-	game := containers.NewGame(gameId, *user, players, numWords, timer)
+	game := containers.NewGame(gameId, *user, numPlayers, numWords, timer)
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[handleHost] Could not upgrade to ws")
@@ -389,8 +394,11 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	players := make(map[uint]*websocket.Conn)
+	players[payload.Id] = ws
+
 	s.Mutex.Lock()
-	s.Games[gameId] = game
+	s.Games[gameId] = Game{Players: players, State: game}
 	s.Mutex.Unlock()
 
 	err = game.NotifyAll(m)
@@ -444,7 +452,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := game.Put(game.NumPlayers, *user, ws); err != nil {
+	if err := game.State.Put(game.State.NumPlayers, *user, ws); err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
 		resp, err := containers.CreateMessage("error", err.Error())
 		if err != nil {
@@ -456,18 +464,21 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
+
+	game.Players[user.ID] = ws
+
 	m, err := containers.CreateMessage("game", game)
 	if err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
 		return
 	}
 
-	if err := game.NotifyAll(m); err != nil {
+	if err := game.State.NotifyAll(m); err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
 		return
 	}
 
-	s.listen(ws, game, payload.Id)
+	s.listen(ws, game.State, payload.Id)
 }
 
 func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
