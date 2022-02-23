@@ -32,7 +32,7 @@ type Server struct {
 	Server   *http.Server
 	DB       *gorm.DB
 	Token    Token
-	Games    map[uint]Game
+	Games    map[uint]*Game
 	Mutex    *sync.RWMutex
 	Upgrader websocket.Upgrader
 }
@@ -42,7 +42,7 @@ func New(db *gorm.DB) *Server {
 		DB:    db,
 		Mux:   mux.NewRouter(),
 		Token: NewToken(32),
-		Games: make(map[uint]Game),
+		Games: make(map[uint]*Game),
 		Mutex: &sync.RWMutex{},
 		Upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -344,6 +344,28 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) handleEvent(event containers.Event) error {
+	game, ok := s.Games[event.GameID]
+	if !ok {
+		return fmt.Errorf("failed to handle event: game id %d not found", event.GameID)
+	}
+
+	for _, receiver := range event.Receivers {
+		ws, ok := game.Players[receiver]
+		if !ok {
+			log.Printf("failed to send event to receiver: receiver id %d not found", receiver)
+		}
+		msg, err := json.Marshal(&containers.Message{Type: event.Type, Msg: event.Msg})
+		if err != nil {
+			return fmt.Errorf("failed to marshal event payload into JSON: %s", err)
+		}
+		if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Printf("failed to send event to receiver: %s", err)
+		}
+	}
+	return nil
+}
+
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 	numPlayers, err := utils.ParseInt(vars, "players")
@@ -378,19 +400,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	s.Mutex.Unlock()
 
 	game := containers.NewGame(gameId, *user, numPlayers, numWords, timer)
+
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[handleHost] Could not upgrade to ws")
-		return
-	}
-	err = game.PutWs(payload.Id, ws)
-	if err != nil {
-		log.Printf("[handleHost] %s", err.Error())
-		return
-	}
-	m, err := containers.CreateMessage("game", game)
-	if err != nil {
-		log.Printf("[handleHost] %s", err.Error())
 		return
 	}
 
@@ -398,23 +411,26 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	players[payload.Id] = ws
 
 	s.Mutex.Lock()
-	s.Games[gameId] = Game{Players: players, State: game}
+	s.Games[gameId] = &Game{Players: players, State: game}
 	s.Mutex.Unlock()
 
-	err = game.NotifyAll(m)
-	if err != nil {
-		log.Printf("[handleHost] Could not notify all players: %s", err.Error())
-		return
-	}
+	go func() {
+		for event := range game.Events {
+			s.handleEvent(event)
+		}
+	}()
+
+	containers.NotifyGameInfo(game)
+
 	s.listen(ws, game, payload.Id)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
-	delete(s.Games, gameId)
 	derr = database.AddGame(s.DB, game)
 	if derr != nil {
 		log.Printf("Error when inserting game to database: %s", err.Error())
 	}
+	delete(s.Games, gameId)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
@@ -452,7 +468,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := game.State.Put(game.State.NumPlayers, *user, ws); err != nil {
+	if err := game.State.AddPlayer(game.State.NumPlayers, *user); err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
 		resp, err := containers.CreateMessage("error", err.Error())
 		if err != nil {
@@ -467,16 +483,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	game.Players[user.ID] = ws
 
-	m, err := containers.CreateMessage("game", game)
-	if err != nil {
-		log.Printf("[handleJoin] %s", err.Error())
-		return
-	}
-
-	if err := game.State.NotifyAll(m); err != nil {
-		log.Printf("[handleJoin] %s", err.Error())
-		return
-	}
+	containers.NotifyGameInfo(game.State)
 
 	s.listen(ws, game.State, payload.Id)
 }

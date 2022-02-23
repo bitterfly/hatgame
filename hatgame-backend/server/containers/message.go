@@ -8,21 +8,35 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type MessageType string
+
+const (
+	Tick     MessageType = "tick"
+	Ready    MessageType = "ready"
+	AddWord  MessageType = "word"
+	Guess    MessageType = "guess"
+	GameInfo MessageType = "game"
+	Team     MessageType = "team"
+	End      MessageType = "end"
+	Start    MessageType = "start"
+	Story    MessageType = "story"
+)
+
 type Message struct {
-	Type string
+	Type MessageType
 	Msg  interface{}
 }
 
 func (m Message) String() string {
 	switch m.Type {
-	case "ready":
-		return m.Type
+	case Ready:
+		return "ready"
 	default:
 		return fmt.Sprintf("%s %s", m.Type, m.Msg)
 	}
 }
 
-func CreateMessage(t string, m interface{}) ([]byte, error) {
+func CreateMessage(t MessageType, m interface{}) ([]byte, error) {
 	return json.Marshal(Message{Type: t, Msg: m})
 }
 
@@ -33,7 +47,7 @@ func (msg Message) HandleMessage(
 	errors chan error) {
 	log.Printf("HandleMessage: %s\n", msg)
 	switch msg.Type {
-	case "word":
+	case AddWord:
 		word := fmt.Sprintf("%s", msg.Msg)
 		resp, err := game.AddWord(id, word)
 		if err != nil {
@@ -47,39 +61,35 @@ func (msg Message) HandleMessage(
 		}
 
 		if game.CheckWordsFinished() {
-			err := game.Start(id)
-			if err != nil {
-				errors <- err
-				return
-			}
+			game.Start()
 		}
-	case "ready":
+	case Ready:
 		err := MakeTurn(id, game)
 		if err != nil {
 			errors <- err
 			return
 		}
-	case "guess":
+	case Guess:
 		word := fmt.Sprintf("%s", msg.Msg)
 		game.Process.guessWord(word)
 
-		story, found := game.nextWord()
+		// story, found := game.nextWord()
 
-		if !found {
-			err := NotifyGameEnded(game)
-			if err != nil {
-				errors <- err
-				return
-			}
-			close(game.Process.GameEnd)
-			return
-		}
+		// if !found {
+		// err := NotifyGameEnded(game)
+		// if err != nil {
+		// 	errors <- err
+		// 	return
+		// }
+		// close(game.Process.GameEnd)
+		// return
+		// }
 
-		err := NotifyWord(game, story)
-		if err != nil {
-			errors <- err
-			return
-		}
+		// err := NotifyWord(game, story)
+		// if err != nil {
+		// 	errors <- err
+		// 	return
+		// }
 	default:
 		errors <- fmt.Errorf("can't decode message: %s", msg)
 	}

@@ -295,7 +295,7 @@ func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
 
 		sum += count
 	}
-	
+
 	if len(weights) != 1 {
 		for i, _ := range weights {
 			weights[i] = float64(sum) - weights[i]
@@ -362,7 +362,7 @@ func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
 		if err := tx.Create(schemaGame).Error; err != nil {
 			return err
 		}
-		for userID := range game.Players.Ws {
+		for _, userID := range game.PlayersIDs {
 			if err := tx.Create(&schema.PlayerGame{
 				UserID: userID,
 				GameID: schemaGame.ID,

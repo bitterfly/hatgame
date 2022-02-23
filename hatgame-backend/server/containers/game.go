@@ -4,30 +4,36 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"sort"
 	"sync"
 	"time"
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
-	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"github.com/gorilla/websocket"
 )
 
+type Event struct {
+	Type      MessageType
+	Msg       interface{}
+	Receivers []uint
+	GameID    uint
+}
+
 type Game struct {
-	Id         uint
+	ID         uint
 	Host       uint
 	NumPlayers int
 	Timer      int
 	NumWords   int
 	Players    Players
 	Process    Process `json:"-"`
+	Events     chan Event
+
+	PlayersIDs []uint
 }
 
 type Players struct {
-	Ws          map[uint]*websocket.Conn
 	WordsByUser map[uint]map[string]struct{}
 	Words       map[string]struct{}
-	WsMutex     *sync.RWMutex
 	WordsMutex  *sync.RWMutex
 	Users       map[uint]schema.User
 }
@@ -68,15 +74,13 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 	users := make(map[uint]schema.User)
 	users[host.ID] = host
 	words := make(map[string]struct{})
-    rand.Seed(time.Now().UnixNano())
+	rand.Seed(time.Now().UnixNano())
 
 	return &Game{
-		Id: gameId,
+		ID: gameId,
 		Players: Players{
-			Ws:          ws,
 			WordsByUser: wordsByUser,
 			Words:       words,
-			WsMutex:     &sync.RWMutex{},
 			WordsMutex:  &sync.RWMutex{},
 			Users:       users},
 		Process: Process{
@@ -91,40 +95,22 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 		NumWords:   numWords,
 		Timer:      timer,
 		Host:       host.ID,
+		PlayersIDs: []uint{host.ID},
 	}
 }
 
-func (g *Game) Get(id uint) (*websocket.Conn, bool) {
-	g.Players.WsMutex.RLock()
-	defer g.Players.WsMutex.RUnlock()
-	ws, ok := g.Players.Ws[id]
-	return ws, ok
-}
-
-func (g *Game) PutWs(id uint, ws *websocket.Conn) error {
-	if _, ok := g.Players.Ws[id]; !ok {
-		return fmt.Errorf("no such player in game")
-	}
-	g.Players.WsMutex.Lock()
-	defer g.Players.WsMutex.Unlock()
-	g.Players.Ws[id] = ws
-	return nil
-}
-
-func (g *Game) Put(max int, user schema.User, ws *websocket.Conn) error {
-	g.Players.WsMutex.Lock()
-	defer g.Players.WsMutex.Unlock()
-	if len(g.Players.Ws) == max {
+func (g *Game) AddPlayer(max int, user schema.User) error {
+	if len(g.Players.Users) == max {
 		return fmt.Errorf("too many players")
 	}
-	if _, ok := g.Players.Ws[user.ID]; ok {
+	if _, ok := g.Players.Users[user.ID]; ok {
 		return fmt.Errorf("player already in game")
 	}
-	g.Players.Ws[user.ID] = ws
 	g.Players.WordsMutex.Lock()
 	defer g.Players.WordsMutex.Unlock()
 	g.Players.WordsByUser[user.ID] = make(map[string]struct{})
 	g.Players.Users[user.ID] = user
+	g.PlayersIDs = append(g.PlayersIDs, user.ID)
 	return nil
 }
 
@@ -151,18 +137,6 @@ func (g *Game) CheckWordsFinished() bool {
 	return len(g.Players.Words) == g.NumPlayers*g.NumWords
 }
 
-func (g Game) NotifyAll(msg []byte) error {
-	g.Players.WsMutex.RLock()
-	defer g.Players.WsMutex.RUnlock()
-	for _, ws := range g.Players.Ws {
-		err := ws.WriteMessage(websocket.TextMessage, msg)
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func (g *Game) MakeTeams() {
 	g.Players.WordsMutex.RLock()
 	for id := range g.Players.WordsByUser {
@@ -179,100 +153,69 @@ func (g *Game) MakeTeams() {
 	)
 }
 
-func NotifyGameStarted(g *Game) error {
-	g.Players.WsMutex.RLock()
-	defer g.Players.WsMutex.RUnlock()
+func NotifyGameStarted(g *Game) {
 	for i, id := range g.Process.Teams {
-		resp, err := CreateMessage("team",
-			g.Process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers])
-		if err != nil {
-			return fmt.Errorf("error when marshalling team message: %w", err)
-		}
-		ws := g.Players.Ws[id]
-		err = ws.WriteMessage(websocket.TextMessage, resp)
-		if err != nil {
-			return fmt.Errorf("error when sending team message: %w", err)
+		g.Events <- Event{
+			GameID:    g.ID,
+			Type:      Team,
+			Msg:       g.Process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
+			Receivers: []uint{id},
 		}
 	}
-	return nil
 }
 
-func NotifyGameEnded(game *Game) error {
-	game.Process.Mutex.RLock()
-	defer game.Process.Mutex.RUnlock()
-
-	rev := make(map[uint]int)
-	for _, id := range game.Process.GuessedWords {
-		rev[id] += 1
+func NotifyGameInfo(game *Game) {
+	game.Events <- Event{
+		GameID:    game.ID,
+		Type:      GameInfo,
+		Msg:       game,
+		Receivers: game.PlayersIDs,
 	}
-	teams := int(game.NumPlayers / 2.0)
-	game.Process.Result = make([]Result, 0, teams)
-
-	for i := 0; i < teams; i++ {
-		first, second := utils.Order(
-			game.Process.Teams[i],
-			game.Process.Teams[(i+teams)%game.NumPlayers])
-
-		res := Result{FirstID: first, SecondID: second}
-		res.Score =
-			rev[res.FirstID] + rev[res.SecondID]
-		game.Process.Result = append(game.Process.Result, res)
-
-	}
-
-	sort.SliceStable(game.Process.Result, func(i, j int) bool {
-		return game.Process.Result[i].Score > game.Process.Result[j].Score
-	})
-
-	resp, err := CreateMessage("end", game.Process.Result)
-	if err != nil {
-		return fmt.Errorf("error when marshalling end message: %w", err)
-	}
-	return game.NotifyAll(resp)
 }
 
-func NotifyStoryteller(game *Game) error {
-	resp, err := CreateMessage("start",
-		game.Process.Teams[game.Process.Storyteller])
-	if err != nil {
-		return fmt.Errorf("error when marshalling start message: %w", err)
+func NotifyGameEnded(game *Game) {
+	game.Process.GetResults()
+	game.Events <- Event{
+		GameID:    game.ID,
+		Receivers: game.PlayersIDs,
+		Type:      End,
+		Msg:       game.Process.Result,
 	}
-	return game.NotifyAll(resp)
 }
 
-func (game *Game) Start(id uint) error {
+func NotifyStoryteller(game *Game) {
+	game.Events <- Event{
+		GameID:    game.ID,
+		Type:      Start,
+		Msg:       game.Process.Teams[game.Process.Storyteller],
+		Receivers: game.PlayersIDs,
+	}
+}
+
+func (game *Game) Start() {
 	game.MakeTeams()
-	err := NotifyGameStarted(game)
-	if err != nil {
-		return err
-	}
-	return NotifyStoryteller(game)
+	NotifyGameStarted(game)
+	NotifyStoryteller(game)
 }
 
-func NotifyWord(game *Game, story string) error {
-	resp, err := CreateMessage("story", story)
-	if err != nil {
-		return err
+func NotifyWord(game *Game, story string) {
+	game.Events <- Event{
+		GameID:    game.ID,
+		Receivers: []uint{game.Process.Teams[game.Process.Storyteller]},
+		Type:      Story,
+		Msg:       story,
 	}
-
-	game.Players.WsMutex.RLock()
-	ws := game.Players.Ws[game.Process.Teams[game.Process.Storyteller]]
-	game.Players.WsMutex.RUnlock()
-
-	return ws.WriteMessage(websocket.TextMessage, resp)
 }
 
 func MakeTurn(id uint, game *Game) error {
 	story, found := game.nextWord()
 
 	if !found {
-		return NotifyGameEnded(game)
+		NotifyGameEnded(game)
+		return nil
 	}
 
-	err := NotifyWord(game, story)
-	if err != nil {
-		return err
-	}
+	NotifyWord(game, story)
 
 	timer := time.NewTicker(1 * time.Second)
 	timerDone := make(chan struct{})
@@ -291,7 +234,8 @@ func MakeTurn(id uint, game *Game) error {
 	case _, ok := <-timerDone:
 		if !ok {
 			game.Process.Storyteller = (game.Process.Storyteller + 1) % game.NumPlayers
-			return NotifyStoryteller(game)
+			NotifyStoryteller(game)
+			return nil
 		}
 	}
 	return nil
@@ -314,13 +258,12 @@ func tick(game *Game, timerDone chan struct{}, timer *time.Ticker) {
 				return
 			}
 			i -= 1
-			// fmt.Printf("Tick: %d\n", i)
-
-			resp, err := CreateMessage("tick", i)
-			if err != nil {
-				fmt.Printf("Error when marshalling")
+			game.Events <- Event{
+				GameID:    game.ID,
+				Type:      Tick,
+				Msg:       i,
+				Receivers: game.PlayersIDs,
 			}
-			game.NotifyAll(resp)
 		}
 	}
 }
