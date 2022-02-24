@@ -112,21 +112,21 @@ func (g *Game) AddPlayer(max int, user schema.User) error {
 	return nil
 }
 
-func (g *Game) AddWord(id uint, word string) ([]byte, error) {
+func (g *Game) AddWord(id uint, word string) (bool, error) {
 	g.Players.WordsMutex.Lock()
 	defer g.Players.WordsMutex.Unlock()
 	if _, ok := g.Players.WordsByUser[id]; !ok {
-		return nil, fmt.Errorf("no player with id %d", id)
+		return false, fmt.Errorf("no player with id %d", id)
 	}
 	if len(g.Players.WordsByUser[id]) == g.NumWords {
-		return nil, fmt.Errorf("words limit reached")
+		return false, fmt.Errorf("words limit reached")
 	}
 	if _, ok := g.Players.Words[word]; ok {
-		return CreateMessage("error", "Already used this word")
+		return false, nil
 	}
 	g.Players.WordsByUser[id][word] = struct{}{}
 	g.Players.Words[word] = struct{}{}
-	return CreateMessage("word", word)
+	return true, nil
 }
 
 func (g *Game) CheckWordsFinished() bool {
@@ -190,12 +190,6 @@ func NotifyStoryteller(game *Game) {
 	}
 }
 
-func (game *Game) Start() {
-	game.MakeTeams()
-	NotifyGameStarted(game)
-	NotifyStoryteller(game)
-}
-
 func NotifyWord(game *Game, story string) {
 	game.Events <- Event{
 		GameID:    game.ID,
@@ -205,12 +199,12 @@ func NotifyWord(game *Game, story string) {
 	}
 }
 
-func MakeTurn(id uint, game *Game) error {
+func MakeTurn(id uint, game *Game) {
 	story, found := game.nextWord()
 
 	if !found {
 		NotifyGameEnded(game)
-		return nil
+		return
 	}
 
 	NotifyWord(game, story)
