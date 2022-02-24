@@ -349,7 +349,6 @@ func (s *Server) handleEvent(event containers.Event) error {
 	if !ok {
 		return fmt.Errorf("failed to handle event: game id %d not found", event.GameID)
 	}
-
 	for _, receiver := range event.Receivers {
 		ws, ok := game.Players[receiver]
 		if !ok {
@@ -414,11 +413,16 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	s.Games[gameId] = &Game{Players: players, State: game}
 	s.Mutex.Unlock()
 
-	go func() {
+	go func(g *Game) {
 		for event := range game.Events {
-			s.handleEvent(event)
+			if err := s.handleEvent(event); err != nil {
+				log.Printf("[handleEvent] %s", err)
+			}
 		}
-	}()
+		for _, ws := range g.Players {
+			ws.Close()
+		}
+	}(s.Games[gameId])
 
 	containers.NotifyGameInfo(game)
 
@@ -510,11 +514,10 @@ func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 		select {
 		case _, ok := <-game.Process.GameEnd:
 			if !ok {
-				ws.Close()
 				return
 			}
 		case msg := <-message:
-			go msg.HandleMessage(ws, game, id, errors)
+			go msg.HandleMessage(game, id, errors)
 		}
 	}
 }
