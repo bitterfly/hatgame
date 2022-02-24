@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
-	"github.com/gorilla/websocket"
 )
 
 type Event struct {
@@ -67,8 +66,6 @@ func (p Players) MarshalJSON() ([]byte, error) {
 }
 
 func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Game {
-	ws := make(map[uint]*websocket.Conn)
-	ws[host.ID] = nil
 	wordsByUser := make(map[uint]map[string]struct{})
 	wordsByUser[host.ID] = make(map[string]struct{})
 	users := make(map[uint]schema.User)
