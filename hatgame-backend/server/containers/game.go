@@ -26,6 +26,7 @@ type Game struct {
 	Players    Players
 	Process    Process    `json:"-"`
 	Events     chan Event `json:"-"`
+	Errors     chan error `json:"-"`
 
 	PlayersIDs []uint `json:"-"`
 }
@@ -35,6 +36,18 @@ type Players struct {
 	Words       map[string]struct{}
 	WordsMutex  *sync.RWMutex
 	Users       map[uint]schema.User
+}
+
+func (g *Game) processNextWord() {
+	word, found := g.nextWord()
+	if !found {
+		NotifyGameEnded(g)
+		close(g.Process.GameEnd)
+		close(g.Events)
+		close(g.Errors)
+		return
+	}
+	NotifyWord(g, word)
 }
 
 func (g *Game) nextWord() (string, bool) {
@@ -93,6 +106,7 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 		Timer:      timer,
 		Host:       host.ID,
 		Events:     make(chan Event),
+		Errors:     make(chan error),
 		PlayersIDs: []uint{host.ID},
 	}
 }
@@ -112,7 +126,7 @@ func (g *Game) AddPlayer(max int, user schema.User) error {
 	return nil
 }
 
-func (g *Game) AddWord(id uint, word string) (bool, error) {
+func (g *Game) addWord(id uint, word string) (bool, error) {
 	g.Players.WordsMutex.Lock()
 	defer g.Players.WordsMutex.Unlock()
 	if _, ok := g.Players.WordsByUser[id]; !ok {
@@ -127,6 +141,34 @@ func (g *Game) AddWord(id uint, word string) (bool, error) {
 	g.Players.WordsByUser[id][word] = struct{}{}
 	g.Players.Words[word] = struct{}{}
 	return true, nil
+}
+
+func (g *Game) AddWord(id uint, word string) {
+	ok, err := g.addWord(id, word)
+	g.Errors <- err
+
+	if !ok {
+		g.Events <- Event{
+			GameID:    g.ID,
+			Type:      Error,
+			Msg:       "Already used this word",
+			Receivers: []uint{id},
+		}
+		return
+	}
+
+	g.Events <- Event{
+		GameID:    g.ID,
+		Type:      AddWord,
+		Msg:       word,
+		Receivers: []uint{id},
+	}
+
+	if g.CheckWordsFinished() {
+		g.MakeTeams()
+		NotifyGameStarted(g)
+		NotifyStoryteller(g)
+	}
 }
 
 func (g *Game) CheckWordsFinished() bool {
@@ -199,21 +241,21 @@ func NotifyWord(game *Game, story string) {
 	}
 }
 
-func MakeTurn(id uint, game *Game) {
-	story, found := game.nextWord()
+func (g *Game) MakeTurn(id uint) {
+	story, found := g.nextWord()
 
 	if !found {
-		NotifyGameEnded(game)
+		NotifyGameEnded(g)
 		return
 	}
 
-	NotifyWord(game, story)
+	NotifyWord(g, story)
 
 	timer := time.NewTicker(1 * time.Second)
 	timerDone := make(chan struct{})
-	go tick(game, timerDone, timer)
+	go tick(g, timerDone, timer)
 	go func(timerDone chan struct{}) {
-		time.Sleep(time.Duration(game.Timer) * time.Second)
+		time.Sleep(time.Duration(g.Timer) * time.Second)
 		timer.Stop()
 		close(timerDone)
 	}(timerDone)

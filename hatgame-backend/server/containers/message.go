@@ -4,8 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-
-	"github.com/gorilla/websocket"
 )
 
 type MessageType string
@@ -20,6 +18,7 @@ const (
 	End      MessageType = "end"
 	Start    MessageType = "start"
 	Story    MessageType = "story"
+	Error    MessageType = "error"
 )
 
 type Message struct {
@@ -41,56 +40,21 @@ func CreateMessage(t MessageType, m interface{}) ([]byte, error) {
 }
 
 func (msg Message) HandleMessage(
-	ws *websocket.Conn,
 	game *Game,
-	id uint,
-	errors chan error) {
+	id uint) {
 	log.Printf("HandleMessage: %s\n", msg)
 	switch msg.Type {
 	case AddWord:
 		word := fmt.Sprintf("%s", msg.Msg)
-		resp, err := game.AddWord(id, word)
-		if err != nil {
-			errors <- err
-			return
-		}
-		err = ws.WriteMessage(websocket.TextMessage, resp)
-		if err != nil {
-			errors <- fmt.Errorf("could not send message")
-			return
-		}
-
-		if game.CheckWordsFinished() {
-			game.Start()
-		}
+		game.AddWord(id, word)
 	case Ready:
-		err := MakeTurn(id, game)
-		if err != nil {
-			errors <- err
-			return
-		}
+		game.MakeTurn(id)
 	case Guess:
 		word := fmt.Sprintf("%s", msg.Msg)
 		game.Process.guessWord(word)
+		game.processNextWord()
 
-		// story, found := game.nextWord()
-
-		// if !found {
-		// err := NotifyGameEnded(game)
-		// if err != nil {
-		// 	errors <- err
-		// 	return
-		// }
-		// close(game.Process.GameEnd)
-		// return
-		// }
-
-		// err := NotifyWord(game, story)
-		// if err != nil {
-		// 	errors <- err
-		// 	return
-		// }
 	default:
-		errors <- fmt.Errorf("can't decode message: %s", msg)
+		game.Errors <- fmt.Errorf("can't decode message: %s", msg)
 	}
 }

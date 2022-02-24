@@ -414,13 +414,19 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	s.Mutex.Unlock()
 
 	go func(g *Game) {
-		for event := range game.Events {
+		for event := range g.State.Events {
 			if err := s.handleEvent(event); err != nil {
 				log.Printf("[handleEvent] %s", err)
 			}
 		}
 		for _, ws := range g.Players {
 			ws.Close()
+		}
+	}(s.Games[gameId])
+
+	go func(g *Game) {
+		for err := range g.State.Errors {
+			log.Printf("ERROR: %s.\n", err)
 		}
 	}(s.Games[gameId])
 
@@ -494,9 +500,6 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 	msg := &containers.Message{}
-	errors := make(chan error)
-	defer close(errors)
-	go HandleErrors(errors)
 	message := make(chan *containers.Message, 1)
 	defer close(message)
 
@@ -517,17 +520,7 @@ func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 				return
 			}
 		case msg := <-message:
-			go msg.HandleMessage(game, id, errors)
+			go msg.HandleMessage(game, id)
 		}
-	}
-}
-
-func HandleErrors(errors chan error) {
-	for {
-		err, ok := <-errors
-		if !ok {
-			return
-		}
-		log.Printf("ERROR: %s.\n", err)
 	}
 }
