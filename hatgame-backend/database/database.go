@@ -9,6 +9,7 @@ import (
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
+	"github.com/bitterfly/go-chaos/hatgame/server/game"
 	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/rand"
@@ -333,7 +334,7 @@ func AddWords(db *gorm.DB, id uint, words []string) *DatabaseError {
 	}))
 }
 
-func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
+func AddGame(db *gorm.DB, game *game.Game) *DatabaseError {
 	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
 		numTeams := int(float64(game.NumPlayers) / 2)
 		schemaResults := make([]schema.Result, 0, numTeams)
