@@ -24,10 +24,10 @@ type Game struct {
 	Timer      int
 	NumWords   int
 	Players    Players
-	Process    Process `json:"-"`
-	Events     chan Event
+	Process    Process    `json:"-"`
+	Events     chan Event `json:"-"`
 
-	PlayersIDs []uint
+	PlayersIDs []uint `json:"-"`
 }
 
 type Players struct {
