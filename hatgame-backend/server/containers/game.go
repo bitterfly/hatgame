@@ -92,6 +92,7 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 		NumWords:   numWords,
 		Timer:      timer,
 		Host:       host.ID,
+		Events:     make(chan Event),
 		PlayersIDs: []uint{host.ID},
 	}
 }
