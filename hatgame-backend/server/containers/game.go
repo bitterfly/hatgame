@@ -217,20 +217,6 @@ func MakeTurn(id uint, game *Game) {
 		timer.Stop()
 		close(timerDone)
 	}(timerDone)
-
-	select {
-	case _, ok := <-game.Process.GameEnd:
-		if !ok {
-			return nil
-		}
-	case _, ok := <-timerDone:
-		if !ok {
-			game.Process.Storyteller = (game.Process.Storyteller + 1) % game.NumPlayers
-			NotifyStoryteller(game)
-			return nil
-		}
-	}
-	return nil
 }
 
 func tick(game *Game, timerDone chan struct{}, timer *time.Ticker) {
@@ -240,6 +226,8 @@ func tick(game *Game, timerDone chan struct{}, timer *time.Ticker) {
 	for {
 		select {
 		case <-timerDone:
+			game.Process.Storyteller = (game.Process.Storyteller + 1) % game.NumPlayers
+			NotifyStoryteller(game)
 			return
 		case _, ok := <-game.Process.GameEnd:
 			if !ok {
