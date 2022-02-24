@@ -4,11 +4,33 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
 	"github.com/bitterfly/go-chaos/hatgame/schema"
+	"github.com/bitterfly/go-chaos/hatgame/utils"
 )
+
+type MessageType string
+
+const (
+	Tick     MessageType = "tick"
+	Ready    MessageType = "ready"
+	AddWord  MessageType = "word"
+	Guess    MessageType = "guess"
+	GameInfo MessageType = "game"
+	Team     MessageType = "team"
+	End      MessageType = "end"
+	Start    MessageType = "start"
+	Story    MessageType = "story"
+	Error    MessageType = "error"
+)
+
+type Message struct {
+	Type MessageType
+	Msg  interface{}
+}
 
 type Event struct {
 	Type      MessageType
@@ -38,7 +60,48 @@ type Players struct {
 	Users       map[uint]schema.User
 }
 
-func (g *Game) processNextWord() {
+type Process struct {
+	WordId       int
+	Storyteller  int
+	Teams        []uint
+	Result       []Result
+	GuessedWords map[string]uint
+	Mutex        *sync.RWMutex
+	GameEnd      chan struct{}
+}
+
+func (g *Game) GuessWord(word string) {
+	g.Process.Mutex.Lock()
+	defer g.Process.Mutex.Unlock()
+	g.Process.GuessedWords[word] = g.Process.Teams[g.Process.Storyteller]
+}
+
+func (g *Game) GetResults() {
+	teams := int(len(g.Process.Teams) / 2.0)
+	rev := make(map[uint]int)
+	for _, id := range g.Process.GuessedWords {
+		rev[id] += 1
+	}
+	g.Process.Result = make([]Result, 0, teams)
+
+	for i := 0; i < teams; i++ {
+		first, second := utils.Order(
+			g.Process.Teams[i],
+			g.Process.Teams[(i+teams)%len(g.Process.Teams)])
+
+		res := Result{FirstID: first, SecondID: second}
+		res.Score =
+			rev[res.FirstID] + rev[res.SecondID]
+		g.Process.Result = append(g.Process.Result, res)
+
+	}
+
+	sort.SliceStable(g.Process.Result, func(i, j int) bool {
+		return g.Process.Result[i].Score > g.Process.Result[j].Score
+	})
+}
+
+func (g *Game) GetNextWord() {
 	word, found := g.nextWord()
 	if !found {
 		NotifyGameEnded(g)
@@ -214,7 +277,7 @@ func NotifyGameInfo(game *Game) {
 }
 
 func NotifyGameEnded(game *Game) {
-	game.Process.GetResults()
+	game.GetResults()
 	game.Events <- Event{
 		GameID:    game.ID,
 		Receivers: game.PlayersIDs,

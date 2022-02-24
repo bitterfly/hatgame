@@ -480,7 +480,8 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	if err := game.State.AddPlayer(game.State.NumPlayers, *user); err != nil {
 		log.Printf("[handleJoin] %s", err.Error())
-		resp, err := containers.CreateMessage("error", err.Error())
+		resp, err := json.Marshal(
+			containers.Message{Type: containers.Error, Msg: err.Error()})
 		if err != nil {
 			log.Printf("[handleJoin] %s", err.Error())
 		}
@@ -507,6 +508,7 @@ func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 		for {
 			err := ws.ReadJSON(&msg)
 			if err != nil {
+				game.Errors <- err
 				return
 			}
 			message <- msg
@@ -520,7 +522,27 @@ func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 				return
 			}
 		case msg := <-message:
-			go msg.HandleMessage(game, id)
+			go HandleMessage(game, id, msg)
 		}
+	}
+}
+
+func HandleMessage(
+	game *containers.Game,
+	id uint,
+	msg *containers.Message) {
+	switch msg.Type {
+	case containers.AddWord:
+		word := fmt.Sprintf("%s", msg.Msg)
+		game.AddWord(id, word)
+	case containers.Ready:
+		game.MakeTurn(id)
+	case containers.Guess:
+		word := fmt.Sprintf("%s", msg.Msg)
+		game.GuessWord(word)
+		game.GetNextWord()
+
+	default:
+		game.Errors <- fmt.Errorf("can't decode message: %s", msg)
 	}
 }
