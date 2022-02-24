@@ -43,7 +43,7 @@ type Players struct {
 }
 
 type Process struct {
-	WordId       int
+	WordID       int
 	Storyteller  int
 	Teams        []uint
 	Result       []containers.Result
@@ -72,8 +72,7 @@ func (g *Game) GetResults() {
 			g.Process.Teams[(i+teams)%len(g.Process.Teams)])
 
 		res := containers.Result{FirstID: first, SecondID: second}
-		res.Score =
-			rev[res.FirstID] + rev[res.SecondID]
+		res.Score = rev[res.FirstID] + rev[res.SecondID]
 		g.Process.Result = append(g.Process.Result, res)
 
 	}
@@ -123,7 +122,7 @@ func (p Players) MarshalJSON() ([]byte, error) {
 	return json.Marshal(Players)
 }
 
-func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Game {
+func NewGame(gameID uint, host schema.User, numPlayers, numWords, timer int) *Game {
 	wordsByUser := make(map[uint]map[string]struct{})
 	wordsByUser[host.ID] = make(map[string]struct{})
 	users := make(map[uint]schema.User)
@@ -132,19 +131,20 @@ func NewGame(gameId uint, host schema.User, numPlayers, numWords, timer int) *Ga
 	rand.Seed(time.Now().UnixNano())
 
 	return &Game{
-		ID: gameId,
+		ID: gameID,
 		Players: Players{
 			WordsByUser: wordsByUser,
 			Words:       words,
 			WordsMutex:  &sync.RWMutex{},
-			Users:       users},
+			Users:       users,
+		},
 		Process: Process{
 			Teams:        make([]uint, 0, numPlayers),
 			GuessedWords: make(map[string]uint),
 			Mutex:        &sync.RWMutex{},
 			GameEnd:      make(chan struct{}),
 			Storyteller:  0,
-			WordId:       0,
+			WordID:       0,
 		},
 		NumPlayers: numPlayers,
 		NumWords:   numWords,
@@ -240,7 +240,6 @@ func (g *Game) MakeTeams() {
 	g.Players.WordsMutex.RLock()
 	for id := range g.Players.WordsByUser {
 		g.Process.Teams = append(g.Process.Teams, id)
-
 	}
 	g.Players.WordsMutex.RUnlock()
 
@@ -322,7 +321,6 @@ func (g *Game) MakeTurn(id uint) {
 
 func tick(game *Game, timerDone chan struct{}, timer *time.Ticker) {
 	i := game.Timer
-	defer fmt.Printf("Closing tick\n")
 
 	for {
 		select {

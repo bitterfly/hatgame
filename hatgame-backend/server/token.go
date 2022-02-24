@@ -17,7 +17,7 @@ var (
 )
 
 type Payload struct {
-	Id      uint
+	ID      uint
 	Expires int64
 }
 
@@ -43,7 +43,7 @@ func NewToken(n int) Token {
 }
 
 func (t *Token) CreateToken(id uint, duration time.Duration) (string, error) {
-	payload := Payload{Id: id, Expires: time.Now().Add(time.Minute * 15).Unix()}
+	payload := Payload{ID: id, Expires: time.Now().Add(time.Minute * 15).Unix()}
 	jwtToken := jwt.NewWithClaims(jwt.SigningMethodHS256, &payload)
 	signedToken, err := jwtToken.SignedString([]byte(t.secretKey))
 	if err != nil {

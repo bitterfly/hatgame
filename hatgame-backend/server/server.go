@@ -57,7 +57,7 @@ func New(db *gorm.DB) *Server {
 	}
 }
 
-func (s *Server) getGameId() uint {
+func (s *Server) getGameID() uint {
 	var m uint
 	for k := range s.Games {
 		if k > m {
@@ -109,7 +109,7 @@ func (s *Server) authHandler(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "id", payload.Id)
+		ctx := context.WithValue(r.Context(), "id", payload.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -201,7 +201,7 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 	idU, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Id is not uint."))
+		w.Write([]byte("ID is not uint."))
 		return
 	}
 	user, derr := database.GetUserByID(s.DB, uint(idU))
@@ -294,7 +294,7 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
 	idU, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Id is not uint."))
+		w.Write([]byte("ID is not uint."))
 		return
 	}
 
@@ -390,17 +390,17 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, derr := database.GetUserByID(s.DB, payload.Id)
+	user, derr := database.GetUserByID(s.DB, payload.ID)
 	if derr != nil {
-		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.Id)
+		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.ID)
 		return
 	}
 
 	s.Mutex.Lock()
-	gameId := s.getGameId()
+	gameID := s.getGameID()
 	s.Mutex.Unlock()
 
-	currentGame := game.NewGame(gameId, *user, numPlayers, numWords, timer)
+	currentGame := game.NewGame(gameID, *user, numPlayers, numWords, timer)
 
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -409,10 +409,10 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	players := make(map[uint]*websocket.Conn)
-	players[payload.Id] = ws
+	players[payload.ID] = ws
 
 	s.Mutex.Lock()
-	s.Games[gameId] = &Game{Players: players, State: currentGame}
+	s.Games[gameID] = &Game{Players: players, State: currentGame}
 	s.Mutex.Unlock()
 
 	go func(g *Game) {
@@ -424,17 +424,17 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		for _, ws := range g.Players {
 			ws.Close()
 		}
-	}(s.Games[gameId])
+	}(s.Games[gameID])
 
 	go func(g *Game) {
 		for err := range g.State.Errors {
 			log.Printf("ERROR: %s.\n", err)
 		}
-	}(s.Games[gameId])
+	}(s.Games[gameID])
 
 	game.NotifyGameInfo(currentGame)
 
-	s.listen(ws, currentGame, payload.Id)
+	s.listen(ws, currentGame, payload.ID)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
@@ -442,15 +442,15 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	if derr != nil {
 		log.Printf("Error when inserting game to database: %s", err.Error())
 	}
-	delete(s.Games, gameId)
+	delete(s.Games, gameID)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	gameId, err := utils.ParseUint(vars, "id")
+	gameID, err := utils.ParseUint(vars, "id")
 	if err != nil {
-		log.Printf("[handleJoin] Could not parse \"gameId\" var: %s", err.Error())
+		log.Printf("[handleJoin] Could not parse \"gameID\" var: %s", err.Error())
 		return
 	}
 
@@ -460,17 +460,17 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, derr := database.GetUserByID(s.DB, payload.Id)
+	user, derr := database.GetUserByID(s.DB, payload.ID)
 	if derr != nil {
-		log.Printf("[handleJoin] Could not get user info for user: %d\n", payload.Id)
+		log.Printf("[handleJoin] Could not get user info for user: %d\n", payload.ID)
 		return
 	}
 
 	s.Mutex.RLock()
-	currentGame, ok := s.Games[uint(gameId)]
+	currentGame, ok := s.Games[uint(gameID)]
 	s.Mutex.RUnlock()
 	if !ok {
-		log.Printf("[handleJoin] No game with id: %d\n", gameId)
+		log.Printf("[handleJoin] No game with id: %d\n", gameID)
 		return
 	}
 
@@ -486,7 +486,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	currentGame.Players[user.ID] = ws
 	game.NotifyGameInfo(currentGame.State)
-	s.listen(ws, currentGame.State, payload.Id)
+	s.listen(ws, currentGame.State, payload.ID)
 }
 
 func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) {
@@ -519,7 +519,8 @@ func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) {
 func HandleMessage(
 	game *game.Game,
 	id uint,
-	msg *message.Message) {
+	msg *message.Message,
+) {
 	switch msg.Type {
 	case message.AddWord:
 		word := fmt.Sprintf("%s", msg.Msg)
