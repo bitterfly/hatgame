@@ -9,12 +9,26 @@ import (
 	"time"
 
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
-	"github.com/bitterfly/go-chaos/hatgame/server/message"
 	"github.com/bitterfly/go-chaos/hatgame/utils"
 )
 
+type EventType string
+
+const (
+	EventTick     EventType = "tick"
+	EventReady    EventType = "ready"
+	EventAddWord  EventType = "word"
+	EventGuess    EventType = "guess"
+	EventGameInfo EventType = "game"
+	EventTeam     EventType = "team"
+	EventEnd      EventType = "end"
+	EventStart    EventType = "start"
+	EventStory    EventType = "story"
+	EventError    EventType = "error"
+)
+
 type Event struct {
-	Type      message.Type
+	Type      EventType
 	Msg       interface{}
 	Receivers map[uint]struct{}
 	GameID    uint
@@ -162,7 +176,7 @@ func (g *Game) AddPlayer(user containers.User) bool {
 	if len(g.Players.IDs) == g.NumPlayers {
 		g.Events <- Event{
 			GameID:    g.ID,
-			Type:      message.Error,
+			Type:      EventError,
 			Msg:       "too many players",
 			Receivers: map[uint]struct{}{user.ID: {}},
 		}
@@ -171,7 +185,7 @@ func (g *Game) AddPlayer(user containers.User) bool {
 	if _, ok := g.Players.IDs[user.ID]; ok {
 		g.Events <- Event{
 			GameID:    g.ID,
-			Type:      message.Error,
+			Type:      EventError,
 			Msg:       "player already in game",
 			Receivers: map[uint]struct{}{user.ID: {}},
 		}
@@ -211,7 +225,7 @@ func (g *Game) AddWord(id uint, word string) {
 	if !ok {
 		g.Events <- Event{
 			GameID:    g.ID,
-			Type:      message.Error,
+			Type:      EventError,
 			Msg:       "Already used this word",
 			Receivers: map[uint]struct{}{id: {}},
 		}
@@ -220,7 +234,7 @@ func (g *Game) AddWord(id uint, word string) {
 
 	g.Events <- Event{
 		GameID:    g.ID,
-		Type:      message.AddWord,
+		Type:      EventAddWord,
 		Msg:       word,
 		Receivers: map[uint]struct{}{id: {}},
 	}
@@ -257,7 +271,7 @@ func NotifyGameStarted(g *Game) {
 	for i, id := range g.Process.Teams {
 		g.Events <- Event{
 			GameID:    g.ID,
-			Type:      message.Team,
+			Type:      EventTeam,
 			Msg:       g.Process.Teams[(i+int(float64(g.NumPlayers)/2))%g.NumPlayers],
 			Receivers: map[uint]struct{}{id: {}},
 		}
@@ -269,7 +283,7 @@ func NotifyGameEnded(game *Game) {
 	game.Events <- Event{
 		GameID:    game.ID,
 		Receivers: game.Players.IDs,
-		Type:      message.End,
+		Type:      EventEnd,
 		Msg:       game.Process.Result,
 	}
 }
@@ -277,7 +291,7 @@ func NotifyGameEnded(game *Game) {
 func NotifyStoryteller(game *Game) {
 	game.Events <- Event{
 		GameID:    game.ID,
-		Type:      message.Start,
+		Type:      EventStart,
 		Msg:       game.Process.Teams[game.Process.Storyteller],
 		Receivers: game.Players.IDs,
 	}
@@ -288,7 +302,7 @@ func NotifyWord(game *Game, story string) {
 		GameID: game.ID,
 		Receivers: map[uint]struct{}{
 			game.Process.Teams[game.Process.Storyteller]: {}},
-		Type: message.Story,
+		Type: EventStory,
 		Msg:  story,
 	}
 }
@@ -328,7 +342,7 @@ func tick(game *Game, timer *time.Ticker) {
 		i -= 1
 		game.Events <- Event{
 			GameID:    game.ID,
-			Type:      message.Tick,
+			Type:      EventTick,
 			Msg:       i,
 			Receivers: game.Players.IDs,
 		}

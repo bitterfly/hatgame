@@ -15,7 +15,6 @@ import (
 	"github.com/bitterfly/go-chaos/hatgame/game"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
-	"github.com/bitterfly/go-chaos/hatgame/server/message"
 	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
@@ -23,6 +22,11 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+type Message struct {
+	Type game.EventType
+	Msg  interface{}
+}
 
 type Game struct {
 	Players map[uint]*websocket.Conn
@@ -356,7 +360,7 @@ func (s *Server) handleEvent(event game.Event) error {
 		if !ok {
 			log.Printf("failed to send event to receiver: receiver id %d not found", receiver)
 		}
-		msg, err := json.Marshal(&message.Message{Type: event.Type, Msg: event.Msg})
+		msg, err := json.Marshal(&Message{Type: event.Type, Msg: event.Msg})
 		if err != nil {
 			return fmt.Errorf("failed to marshal event payload into JSON: %s", err)
 		}
@@ -436,7 +440,7 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	msg, err := json.Marshal(&message.Message{Type: message.GameInfo, Msg: currentGame})
+	msg, err := json.Marshal(&Message{Type: game.EventGameInfo, Msg: currentGame})
 	if err != nil {
 		log.Printf("failed to marshal event payload into JSON: %s", err)
 	}
@@ -497,7 +501,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 
 	currentGame.Players[user.ID] = ws
 	msg, err := json.Marshal(
-		&message.Message{Type: message.GameInfo, Msg: currentGame.State})
+		&Message{Type: game.EventGameInfo, Msg: currentGame.State})
 	if err != nil {
 		log.Printf("failed to marshal event payload into JSON: %s", err)
 	}
@@ -511,8 +515,8 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) {
-	msg := &message.Message{}
-	message := make(chan *message.Message, 1)
+	msg := &Message{}
+	message := make(chan *Message, 1)
 	defer close(message)
 
 	go func(ws *websocket.Conn) {
@@ -538,22 +542,22 @@ func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) {
 }
 
 func HandleMessage(
-	game *game.Game,
+	g *game.Game,
 	id uint,
-	msg *message.Message,
+	msg *Message,
 ) {
 	switch msg.Type {
-	case message.AddWord:
+	case game.EventAddWord:
 		word := fmt.Sprintf("%s", msg.Msg)
-		game.AddWord(id, word)
-	case message.Ready:
-		game.MakeTurn(id)
-	case message.Guess:
+		g.AddWord(id, word)
+	case game.EventReady:
+		g.MakeTurn(id)
+	case game.EventGuess:
 		word := fmt.Sprintf("%s", msg.Msg)
-		game.GuessWord(word)
-		game.GetNextWord()
+		g.GuessWord(word)
+		g.GetNextWord()
 
 	default:
-		game.Errors <- fmt.Errorf("can't decode message: %s", msg)
+		g.Errors <- fmt.Errorf("can't decode message: %s", msg)
 	}
 }
