@@ -415,16 +415,16 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	s.Games[gameID] = &Game{Players: players, State: currentGame}
 	s.Mutex.Unlock()
 
-	go func(g *Game) {
-		for event := range g.State.Events {
+	go func() {
+		for event := range currentGame.Events {
 			if err := s.handleEvent(event); err != nil {
 				log.Printf("[handleEvent] %s", err)
 			}
 		}
-		for _, ws := range g.Players {
+		for _, ws := range s.Games[gameID].Players {
 			ws.Close()
 		}
-	}(s.Games[gameID])
+	}()
 
 	go func(g *Game) {
 		for err := range g.State.Errors {
