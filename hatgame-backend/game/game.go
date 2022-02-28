@@ -304,39 +304,33 @@ func (g *Game) MakeTurn(id uint) {
 	NotifyWord(g, story)
 
 	timer := time.NewTicker(1 * time.Second)
-	timerDone := make(chan struct{})
-	go tick(g, timerDone, timer)
-	go func(timerDone chan struct{}) {
-		time.Sleep(time.Duration(g.Timer) * time.Second)
-		timer.Stop()
-		close(timerDone)
-	}(timerDone)
-}
-
-func tick(game *Game, timerDone chan struct{}, timer *time.Ticker) {
-	i := game.Timer
-
+	defer timer.Stop()
+	go tick(g, timer)
 	for {
 		select {
-		case <-timerDone:
-			game.Process.Storyteller = (game.Process.Storyteller + 1) % game.NumPlayers
-			NotifyStoryteller(game)
+		case <-time.After(time.Duration(g.Timer) * time.Second):
+			fmt.Println("Timer out")
+			g.Process.Storyteller = (g.Process.Storyteller + 1) % g.NumPlayers
+			NotifyStoryteller(g)
 			return
-		case _, ok := <-game.Process.GameEnd:
+		case _, ok := <-g.Process.GameEnd:
 			if !ok {
 				return
 			}
-		case _, ok := <-timer.C:
-			if !ok {
-				return
-			}
-			i -= 1
-			game.Events <- Event{
-				GameID:    game.ID,
-				Type:      message.Tick,
-				Msg:       i,
-				Receivers: game.Players.IDs,
-			}
+		}
+	}
+}
+
+func tick(game *Game, timer *time.Ticker) {
+	i := game.Timer
+	for _ = range timer.C {
+		fmt.Println("tick")
+		i -= 1
+		game.Events <- Event{
+			GameID:    game.ID,
+			Type:      message.Tick,
+			Msg:       i,
+			Receivers: game.Players.IDs,
 		}
 	}
 }
