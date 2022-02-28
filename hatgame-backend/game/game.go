@@ -44,7 +44,6 @@ type Game struct {
 	Words      Words      `json:"-"`
 	Process    Process    `json:"-"`
 	Events     chan Event `json:"-"`
-	Errors     chan error `json:"-"`
 }
 
 type Players struct {
@@ -112,7 +111,6 @@ func (g *Game) GetNextWord() {
 		NotifyGameEnded(g)
 		close(g.Process.GameEnd)
 		close(g.Events)
-		close(g.Errors)
 		return
 	}
 	NotifyWord(g, word)
@@ -164,7 +162,6 @@ func NewGame(gameID uint, host containers.User, numPlayers, numWords, timer int)
 		Timer:      timer,
 		Host:       host.ID,
 		Events:     make(chan Event),
-		Errors:     make(chan error),
 		Players: Players{
 			IDs:   map[uint]struct{}{host.ID: {}},
 			Users: map[containers.User]struct{}{host: {}},
@@ -199,34 +196,31 @@ func (g *Game) AddPlayer(user containers.User) bool {
 	return true
 }
 
-func (g *Game) addWord(id uint, word string) (bool, error) {
+func (g *Game) addWord(id uint, word string) error {
 	g.Words.Mutex.Lock()
 	defer g.Words.Mutex.Unlock()
 	if _, ok := g.Players.IDs[id]; !ok {
-		return false, fmt.Errorf("no player with id %d", id)
+		return fmt.Errorf("no player with id %d", id)
 	}
 	if len(g.Words.ByUser[id]) == g.NumWords {
-		return false, fmt.Errorf("words limit reached")
+		return fmt.Errorf("words limit reached")
 	}
 	if _, ok := g.Words.All[word]; ok {
-		return false, nil
+		return fmt.Errorf("already used this word")
 	}
 	g.Words.ByUser[id][word] = struct{}{}
 	g.Words.All[word] = struct{}{}
-	return true, nil
+	return nil
 }
 
 func (g *Game) AddWord(id uint, word string) {
-	ok, err := g.addWord(id, word)
-	if err != nil {
-		g.Errors <- err
-	}
+	err := g.addWord(id, word)
 
-	if !ok {
+	if err != nil {
 		g.Events <- Event{
 			GameID:    g.ID,
 			Type:      EventError,
-			Msg:       "Already used this word",
+			Msg:       err.Error(),
 			Receivers: map[uint]struct{}{id: {}},
 		}
 		return

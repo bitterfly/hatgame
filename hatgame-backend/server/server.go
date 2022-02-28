@@ -434,12 +434,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	go func() {
-		for err := range s.Games[gameID].State.Errors {
-			log.Printf("ERROR: %s.\n", err)
-		}
-	}()
-
 	msg, err := json.Marshal(&Message{Type: game.EventGameInfo, Msg: currentGame})
 	if err != nil {
 		log.Printf("failed to marshal event payload into JSON: %s", err)
@@ -558,6 +552,6 @@ func HandleMessage(
 		g.GetNextWord()
 
 	default:
-		g.Errors <- fmt.Errorf("can't decode message: %s", msg)
+		log.Printf("can't decode message: %s", msg)
 	}
 }
