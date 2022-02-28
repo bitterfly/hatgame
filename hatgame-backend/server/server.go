@@ -485,7 +485,6 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if ok := currentGame.State.AddPlayer(
-		currentGame.State.NumPlayers,
 		containers.User{ID: user.ID, Email: user.Email, Username: user.Username}); !ok {
 		return
 	}

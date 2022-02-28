@@ -158,8 +158,8 @@ func NewGame(gameID uint, host containers.User, numPlayers, numWords, timer int)
 	}
 }
 
-func (g *Game) AddPlayer(max int, user containers.User) bool {
-	if len(g.Players.IDs) == max {
+func (g *Game) AddPlayer(user containers.User) bool {
+	if len(g.Players.IDs) == g.NumPlayers {
 		g.Events <- Event{
 			GameID:    g.ID,
 			Type:      message.Error,
