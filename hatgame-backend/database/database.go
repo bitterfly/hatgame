@@ -370,7 +370,7 @@ func AddGame(db *gorm.DB, game *game.Game) *DatabaseError {
 		if err := tx.Create(schemaGame).Error; err != nil {
 			return err
 		}
-		for _, userID := range game.PlayersIDs {
+		for userID := range game.Players.IDs {
 			if err := tx.Create(&schema.PlayerGame{
 				UserID: userID,
 				GameID: schemaGame.ID,
@@ -379,8 +379,8 @@ func AddGame(db *gorm.DB, game *game.Game) *DatabaseError {
 			}
 		}
 
-		gameWords := make([]schema.GameWord, 0, len(game.Players.Words))
-		for userID, words := range game.Players.WordsByUser {
+		gameWords := make([]schema.GameWord, 0, len(game.Words.All))
+		for userID, words := range game.Words.ByUser {
 			for word := range words {
 				schemaWord := schema.Word{Word: word}
 				if err := tx.Where("word = ?", word).

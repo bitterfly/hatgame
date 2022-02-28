@@ -119,7 +119,7 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
-	user, err := containers.ParseUser(r.Body)
+	user, err := containers.ParseLoginUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -155,7 +155,7 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
-	user, err := containers.ParseUser(r.Body)
+	user, err := containers.ParseLoginUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -316,7 +316,7 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := containers.ParseUser(r.Body)
+	user, err := containers.ParseLoginUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -351,7 +351,7 @@ func (s *Server) handleEvent(event game.Event) error {
 	if !ok {
 		return fmt.Errorf("failed to handle event: game id %d not found", event.GameID)
 	}
-	for _, receiver := range event.Receivers {
+	for receiver := range event.Receivers {
 		ws, ok := game.Players[receiver]
 		if !ok {
 			log.Printf("failed to send event to receiver: receiver id %d not found", receiver)
@@ -389,7 +389,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[handleHost] Could not validate token: %s", err.Error())
 		return
 	}
-
 	user, derr := database.GetUserByID(s.DB, payload.ID)
 	if derr != nil {
 		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.ID)
@@ -400,7 +399,12 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	gameID := s.getGameID()
 	s.Mutex.Unlock()
 
-	currentGame := game.NewGame(gameID, *user, numPlayers, numWords, timer)
+	currentGame := game.NewGame(
+		gameID,
+		containers.User{ID: user.ID, Email: user.Email, Username: user.Username},
+		numPlayers,
+		numWords,
+		timer)
 
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -480,7 +484,9 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if ok := currentGame.State.AddPlayer(currentGame.State.NumPlayers, *user); !ok {
+	if ok := currentGame.State.AddPlayer(
+		currentGame.State.NumPlayers,
+		containers.User{ID: user.ID, Email: user.Email, Username: user.Username}); !ok {
 		return
 	}
 
