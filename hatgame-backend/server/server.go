@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/bitterfly/go-chaos/hatgame/database"
+	"github.com/bitterfly/go-chaos/hatgame/game"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 	"github.com/bitterfly/go-chaos/hatgame/utils"
@@ -22,12 +23,22 @@ import (
 	"gorm.io/gorm"
 )
 
+type Message struct {
+	Type game.EventType
+	Msg  interface{}
+}
+
+type Game struct {
+	Players map[uint]*websocket.Conn
+	State   *game.Game
+}
+
 type Server struct {
 	Mux      *mux.Router
 	Server   *http.Server
 	DB       *gorm.DB
 	Token    Token
-	Games    map[uint]*containers.Game
+	Games    map[uint]*Game
 	Mutex    *sync.RWMutex
 	Upgrader websocket.Upgrader
 }
@@ -37,7 +48,7 @@ func New(db *gorm.DB) *Server {
 		DB:    db,
 		Mux:   mux.NewRouter(),
 		Token: NewToken(32),
-		Games: make(map[uint]*containers.Game),
+		Games: make(map[uint]*Game),
 		Mutex: &sync.RWMutex{},
 		Upgrader: websocket.Upgrader{
 			ReadBufferSize:  1024,
@@ -50,7 +61,7 @@ func New(db *gorm.DB) *Server {
 	}
 }
 
-func (s *Server) getGameId() uint {
+func (s *Server) getGameID() uint {
 	var m uint
 	for k := range s.Games {
 		if k > m {
@@ -102,7 +113,7 @@ func (s *Server) authHandler(next http.Handler) http.Handler {
 			return
 		}
 
-		ctx := context.WithValue(r.Context(), "id", payload.Id)
+		ctx := context.WithValue(r.Context(), "id", payload.ID)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
@@ -112,7 +123,7 @@ func (s *Server) handleMain(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
-	user, err := containers.ParseUser(r.Body)
+	user, err := containers.ParseLoginUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -148,7 +159,7 @@ func (s *Server) handleUserLogin(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleUserRegister(w http.ResponseWriter, r *http.Request) {
-	user, err := containers.ParseUser(r.Body)
+	user, err := containers.ParseLoginUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -194,7 +205,7 @@ func (s *Server) handleUserShow(w http.ResponseWriter, r *http.Request) {
 	idU, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Id is not uint."))
+		w.Write([]byte("ID is not uint."))
 		return
 	}
 	user, derr := database.GetUserByID(s.DB, uint(idU))
@@ -287,7 +298,7 @@ func (s *Server) handleGameShow(w http.ResponseWriter, r *http.Request) {
 	idU, err := strconv.ParseUint(id, 10, 64)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
-		w.Write([]byte("Id is not uint."))
+		w.Write([]byte("ID is not uint."))
 		return
 	}
 
@@ -309,7 +320,7 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := containers.ParseUser(r.Body)
+	user, err := containers.ParseLoginUser(r.Body)
 	if err != nil {
 		w.WriteHeader(http.StatusBadRequest)
 		w.Write([]byte("Bad user json."))
@@ -339,9 +350,30 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+func (s *Server) handleEvent(event game.Event) error {
+	game, ok := s.Games[event.GameID]
+	if !ok {
+		return fmt.Errorf("failed to handle event: game id %d not found", event.GameID)
+	}
+	for receiver := range event.Receivers {
+		ws, ok := game.Players[receiver]
+		if !ok {
+			log.Printf("failed to send event to receiver: receiver id %d not found", receiver)
+		}
+		msg, err := json.Marshal(&Message{Type: event.Type, Msg: event.Msg})
+		if err != nil {
+			return fmt.Errorf("failed to marshal event payload into JSON: %s", err)
+		}
+		if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Printf("failed to send event to receiver: %s", err)
+		}
+	}
+	return nil
+}
+
 func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
-	players, err := utils.ParseInt(vars, "players")
+	numPlayers, err := utils.ParseInt(vars, "players")
 	if err != nil {
 		log.Printf("[handleHost] Could not parse \"player\" var: %s", err.Error())
 		return
@@ -361,60 +393,72 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[handleHost] Could not validate token: %s", err.Error())
 		return
 	}
-
-	user, derr := database.GetUserByID(s.DB, payload.Id)
+	user, derr := database.GetUserByID(s.DB, payload.ID)
 	if derr != nil {
-		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.Id)
+		log.Printf("[handleHost] Could not get user info for user: %d\n", payload.ID)
 		return
 	}
 
 	s.Mutex.Lock()
-	gameId := s.getGameId()
+	gameID := s.getGameID()
 	s.Mutex.Unlock()
 
-	game := containers.NewGame(gameId, *user, players, numWords, timer)
+	currentGame := game.NewGame(
+		gameID,
+		containers.User{ID: user.ID, Email: user.Email, Username: user.Username},
+		numPlayers,
+		numWords,
+		timer)
+
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		log.Printf("[handleHost] Could not upgrade to ws")
 		return
 	}
-	err = game.PutWs(payload.Id, ws)
-	if err != nil {
-		log.Printf("[handleHost] %s", err.Error())
-		return
-	}
-	m, err := containers.CreateMessage("game", game)
-	if err != nil {
-		log.Printf("[handleHost] %s", err.Error())
-		return
-	}
+
+	players := make(map[uint]*websocket.Conn)
+	players[payload.ID] = ws
 
 	s.Mutex.Lock()
-	s.Games[gameId] = game
+	s.Games[gameID] = &Game{Players: players, State: currentGame}
 	s.Mutex.Unlock()
 
-	err = game.NotifyAll(m)
+	go func() {
+		for event := range currentGame.Events {
+			if err := s.handleEvent(event); err != nil {
+				log.Printf("[handleEvent] %s", err)
+			}
+		}
+		for _, ws := range s.Games[gameID].Players {
+			ws.Close()
+		}
+	}()
+
+	msg, err := json.Marshal(&Message{Type: game.EventGameInfo, Msg: currentGame})
 	if err != nil {
-		log.Printf("[handleHost] Could not notify all players: %s", err.Error())
-		return
+		log.Printf("failed to marshal event payload into JSON: %s", err)
 	}
-	s.listen(ws, game, payload.Id)
+	if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+		log.Printf("failed to send event to receiver: %s", err)
+	}
+
+	s.listen(ws, currentGame, payload.ID)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
-	delete(s.Games, gameId)
-	derr = database.AddGame(s.DB, game)
+	derr = database.AddGame(s.DB, currentGame)
 	if derr != nil {
 		log.Printf("Error when inserting game to database: %s", err.Error())
 	}
+	delete(s.Games, gameID)
 }
 
 func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	vars := mux.Vars(r)
 
-	gameId, err := utils.ParseUint(vars, "id")
+	gameID, err := utils.ParseUint(vars, "id")
 	if err != nil {
-		log.Printf("[handleJoin] Could not parse \"gameId\" var: %s", err.Error())
+		log.Printf("[handleJoin] Could not parse \"gameID\" var: %s", err.Error())
 		return
 	}
 
@@ -424,17 +468,22 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, derr := database.GetUserByID(s.DB, payload.Id)
+	user, derr := database.GetUserByID(s.DB, payload.ID)
 	if derr != nil {
-		log.Printf("[handleJoin] Could not get user info for user: %d\n", payload.Id)
+		log.Printf("[handleJoin] Could not get user info for user: %d\n", payload.ID)
 		return
 	}
 
 	s.Mutex.RLock()
-	game, ok := s.Games[uint(gameId)]
+	currentGame, ok := s.Games[uint(gameID)]
 	s.Mutex.RUnlock()
 	if !ok {
-		log.Printf("[handleJoin] No game with id: %d\n", gameId)
+		log.Printf("[handleJoin] No game with id: %d\n", gameID)
+		return
+	}
+
+	if ok := currentGame.State.AddPlayer(
+		containers.User{ID: user.ID, Email: user.Email, Username: user.Username}); !ok {
 		return
 	}
 
@@ -444,38 +493,24 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := game.Put(game.NumPlayers, *user, ws); err != nil {
-		log.Printf("[handleJoin] %s", err.Error())
-		resp, err := containers.CreateMessage("error", err.Error())
-		if err != nil {
-			log.Printf("[handleJoin] %s", err.Error())
-		}
-		err = ws.WriteMessage(websocket.TextMessage, resp)
-		if err != nil {
-			log.Printf("[handleJoin] %s", err.Error())
-		}
-		return
-	}
-	m, err := containers.CreateMessage("game", game)
+	currentGame.Players[user.ID] = ws
+	msg, err := json.Marshal(
+		&Message{Type: game.EventGameInfo, Msg: currentGame.State})
 	if err != nil {
-		log.Printf("[handleJoin] %s", err.Error())
-		return
+		log.Printf("failed to marshal event payload into JSON: %s", err)
+	}
+	for _, ws := range currentGame.Players {
+		if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Printf("failed to send event to receiver: %s", err)
+		}
 	}
 
-	if err := game.NotifyAll(m); err != nil {
-		log.Printf("[handleJoin] %s", err.Error())
-		return
-	}
-
-	s.listen(ws, game, payload.Id)
+	s.listen(ws, currentGame.State, payload.ID)
 }
 
-func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
-	msg := &containers.Message{}
-	errors := make(chan error)
-	defer close(errors)
-	go HandleErrors(errors)
-	message := make(chan *containers.Message, 1)
+func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) {
+	msg := &Message{}
+	message := make(chan *Message, 1)
 	defer close(message)
 
 	go func(ws *websocket.Conn) {
@@ -492,21 +527,31 @@ func (s *Server) listen(ws *websocket.Conn, game *containers.Game, id uint) {
 		select {
 		case _, ok := <-game.Process.GameEnd:
 			if !ok {
-				ws.Close()
 				return
 			}
 		case msg := <-message:
-			go msg.HandleMessage(ws, game, id, errors)
+			go HandleMessage(game, id, msg)
 		}
 	}
 }
 
-func HandleErrors(errors chan error) {
-	for {
-		err, ok := <-errors
-		if !ok {
-			return
-		}
-		log.Printf("ERROR: %s.\n", err)
+func HandleMessage(
+	g *game.Game,
+	id uint,
+	msg *Message,
+) {
+	switch msg.Type {
+	case game.EventAddWord:
+		word := fmt.Sprintf("%s", msg.Msg)
+		g.AddWord(id, word)
+	case game.EventReady:
+		g.MakeTurn(id)
+	case game.EventGuess:
+		word := fmt.Sprintf("%s", msg.Msg)
+		g.GuessWord(word)
+		g.GetNextWord()
+
+	default:
+		log.Printf("can't decode message: %s", msg)
 	}
 }

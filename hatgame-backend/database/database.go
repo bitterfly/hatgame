@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/bitterfly/go-chaos/hatgame/game"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 	"github.com/bitterfly/go-chaos/hatgame/utils"
@@ -253,7 +254,7 @@ func Open(filename string) (*gorm.DB, *DatabaseError) {
 
 func AddUser(db *gorm.DB, user *schema.User) (uint, *DatabaseError) {
 	if _, err := GetUserByEmail(db, user.Email); err == nil {
-		return 0, newConflictError(fmt.Errorf("User with that email already exists."))
+		return 0, newConflictError(fmt.Errorf("user with that email already exists"))
 	}
 
 	if err := db.Create(user).Error; err != nil {
@@ -275,7 +276,11 @@ func GetUserByEmail(db *gorm.DB, email string) (*schema.User, *DatabaseError) {
 }
 
 func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
-	rows, err := db.Raw("select word, count(*) from words left join user_dictionaries on words.id = user_dictionaries.word_id where (user_dictionaries.author_id <> ? or user_dictionaries.author_id is null) group by words.id", id).Rows()
+	rows, err := db.Raw(`
+		select word, count(*) from words
+		left join user_dictionaries on words.id = user_dictionaries.word_id
+		where (user_dictionaries.author_id <> ? or user_dictionaries.author_id is null)
+		group by words.id`, id).Rows()
 	if err != nil {
 		return nil, newQueryError(err)
 	}
@@ -296,8 +301,10 @@ func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
 		sum += count
 	}
 
-	for i, _ := range weights {
-		weights[i] = float64(sum) - weights[i]
+	if len(weights) != 1 {
+		for i := range weights {
+			weights[i] = float64(sum) - weights[i]
+		}
 	}
 
 	sampler := sampleuv.NewWeighted(
@@ -306,7 +313,7 @@ func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
 	)
 	resSize := utils.Min(len(weights), n)
 
-	result := make([]string, resSize, resSize)
+	result := make([]string, resSize)
 	for i := 0; i < resSize; i++ {
 		index, ok := sampler.Take()
 		if !ok {
@@ -320,7 +327,7 @@ func RecommendWord(db *gorm.DB, n int, id uint) ([]string, *DatabaseError) {
 
 func AddWords(db *gorm.DB, id uint, words []string) *DatabaseError {
 	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
-		schemaWords := make([]schema.Word, len(words), len(words))
+		schemaWords := make([]schema.Word, len(words))
 		for i, w := range words {
 			schemaWords[i] = schema.Word{
 				Word: w,
@@ -331,7 +338,7 @@ func AddWords(db *gorm.DB, id uint, words []string) *DatabaseError {
 	}))
 }
 
-func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
+func AddGame(db *gorm.DB, game *game.Game) *DatabaseError {
 	return newQueryError(db.Transaction(func(tx *gorm.DB) error {
 		numTeams := int(float64(game.NumPlayers) / 2)
 		schemaResults := make([]schema.Result, 0, numTeams)
@@ -340,7 +347,10 @@ func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
 				FirstID:  r.FirstID,
 				SecondID: r.SecondID,
 			}
-			if err := tx.Where("first_id = ? AND second_id = ?", schemaTeam.FirstID, schemaTeam.SecondID).FirstOrCreate(&schemaTeam).Error; err != nil {
+			if err := tx.Where(
+				"first_id = ? AND second_id = ?",
+				schemaTeam.FirstID,
+				schemaTeam.SecondID).FirstOrCreate(&schemaTeam).Error; err != nil {
 				return err
 			}
 
@@ -360,7 +370,7 @@ func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
 		if err := tx.Create(schemaGame).Error; err != nil {
 			return err
 		}
-		for userID := range game.Players.Ws {
+		for userID := range game.Players.IDs {
 			if err := tx.Create(&schema.PlayerGame{
 				UserID: userID,
 				GameID: schemaGame.ID,
@@ -369,18 +379,19 @@ func AddGame(db *gorm.DB, game *containers.Game) *DatabaseError {
 			}
 		}
 
-		gameWords := make([]schema.GameWord, 0, len(game.Players.Words))
-		for userId, words := range game.Players.WordsByUser {
+		gameWords := make([]schema.GameWord, 0, len(game.Words.All))
+		for userID, words := range game.Words.ByUser {
 			for word := range words {
 				schemaWord := schema.Word{Word: word}
-				if err := tx.Where("word = ?", word).FirstOrCreate(&schemaWord).Error; err != nil {
+				if err := tx.Where("word = ?", word).
+					FirstOrCreate(&schemaWord).Error; err != nil {
 					return err
 				}
 				userDictionary := schema.UserDictionary{
-					AuthorID: userId,
+					AuthorID: userID,
 					WordID:   schemaWord.ID,
 				}
-				if err := tx.Where("author_id = ? AND word_id = ?", userId, schemaWord.ID).
+				if err := tx.Where("author_id = ? AND word_id = ?", userID, schemaWord.ID).
 					FirstOrCreate(&userDictionary).Error; err != nil {
 					return err
 				}
@@ -416,7 +427,12 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, *DatabaseEr
 	var numTies int64
 	var res Result
 	err := db.Transaction(func(tx *gorm.DB) error {
-		rows, err := tx.Model(&schema.UserDictionary{}).Limit(5).Select("words.word, count(words.word) as count").Joins("left join words on user_dictionaries.word_id = words.id").Where("author_id = ?", id).Group("words.word").Order("count(words.word) desc").Rows()
+		rows, err := tx.Model(&schema.UserDictionary{}).
+			Limit(5).
+			Select("words.word, count(words.word) as count").
+			Joins("left join words on user_dictionaries.word_id = words.id").
+			Where("author_id = ?", id).Group("words.word").
+			Order("count(words.word) desc").Rows()
 		if err != nil {
 			return err
 		}
@@ -431,11 +447,22 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, *DatabaseEr
 			words = append(words, containers.Word{Word: word, Count: count})
 		}
 
-		if err := tx.Model(&schema.PlayerGame{}).Select("game_id").Where("user_id = ?", id).Count(&numGames).Error; err != nil {
+		if err := tx.Model(&schema.PlayerGame{}).
+			Select("game_id").Where("user_id = ?", id).
+			Count(&numGames).Error; err != nil {
 			return err
 		}
 
-		rows, err = tx.Raw("select teams.first_id, teams.second_id, results.score, games.id from game_results left join games on game_results.game_id = games.id left join results on results.id = game_results.result_id left join teams on teams.id = results.team_id where results.score = (select max(results2.score) from game_results as game_results2 left join results as results2 on game_results2.result_id = results2.id where game_results2.game_id = games.id);").Rows()
+		rows, err = tx.Raw(`
+			select teams.first_id, teams.second_id, results.score, games.id
+			from game_results
+			left join games on game_results.game_id = games.id
+			left join results on results.id = game_results.result_id
+			left join teams on teams.id = results.team_id
+			where results.score = (
+				select max(results2.score) from game_results as game_results2
+				left join results as results2 on game_results2.result_id = results2.id
+				where game_results2.game_id = games.id);`).Rows()
 		if err != nil {
 			return err
 		}
@@ -449,7 +476,8 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, *DatabaseEr
 				results[res.ID],
 				containers.Result{
 					FirstID:  res.FirstID,
-					SecondID: res.SecondID, Score: res.Score})
+					SecondID: res.SecondID, Score: res.Score,
+				})
 		}
 
 		for _, res := range results {
@@ -464,7 +492,6 @@ func GetUserStatistics(db *gorm.DB, id uint) (containers.Statistics, *DatabaseEr
 
 		return nil
 	})
-
 	if err != nil {
 		return containers.Statistics{}, newQueryError(err)
 	}

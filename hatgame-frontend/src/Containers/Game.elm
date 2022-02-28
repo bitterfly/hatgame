@@ -164,7 +164,7 @@ decodeTeam =
 decode : Decoder Game
 decode =
     Json.Decode.map6 Game
-        (Json.Decode.field "Id" Json.Decode.int)
+        (Json.Decode.field "ID" Json.Decode.int)
         (Json.Decode.field "NumPlayers" Json.Decode.int)
         (Json.Decode.field "Timer" Json.Decode.int)
         (Json.Decode.field "NumWords" Json.Decode.int)
@@ -176,7 +176,7 @@ show : Game -> String
 show { id, numPlayers, timer, numWords, host, players } =
     String.join
         "\n"
-        [ String.join " " [ "Id:", String.fromInt id ]
+        [ String.join " " [ "ID:", String.fromInt id ]
         , String.join " " [ "NumPlayers:", String.fromInt numPlayers ]
         , String.join " " [ "Timer:", String.fromInt timer ]
         , String.join " " [ "NumWords:", String.fromInt numWords ]

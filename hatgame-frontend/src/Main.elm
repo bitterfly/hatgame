@@ -480,7 +480,7 @@ update msg model =
                         Page.Started startedData ->
                             case timer of
                                 0 ->
-                                    ( { model | page = Started { startedData | currentWord = Nothing, timer = Just timer, processState = Started.NotStoryteller Nothing } }, Cmd.none )
+                                    ( { model | page = Started { startedData | currentWord = Nothing, timer = Nothing } }, Cmd.none )
 
                                 n ->
                                     ( { model | page = Started { startedData | timer = Just n } }, Cmd.none )
