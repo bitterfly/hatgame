@@ -262,15 +262,6 @@ func NotifyGameStarted(g *Game) {
 	}
 }
 
-func NotifyGameInfo(game *Game) {
-	game.Events <- Event{
-		GameID:    game.ID,
-		Type:      message.GameInfo,
-		Msg:       game,
-		Receivers: game.PlayersIDs,
-	}
-}
-
 func NotifyGameEnded(game *Game) {
 	game.GetResults()
 	game.Events <- Event{

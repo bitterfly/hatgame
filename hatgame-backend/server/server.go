@@ -426,13 +426,19 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	go func(g *Game) {
-		for err := range g.State.Errors {
+	go func() {
+		for err := range s.Games[gameID].State.Errors {
 			log.Printf("ERROR: %s.\n", err)
 		}
-	}(s.Games[gameID])
+	}()
 
-	game.NotifyGameInfo(currentGame)
+	msg, err := json.Marshal(&message.Message{Type: message.GameInfo, Msg: currentGame})
+	if err != nil {
+		log.Printf("failed to marshal event payload into JSON: %s", err)
+	}
+	if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+		log.Printf("failed to send event to receiver: %s", err)
+	}
 
 	s.listen(ws, currentGame, payload.ID)
 	s.Mutex.Lock()
@@ -485,7 +491,17 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentGame.Players[user.ID] = ws
-	game.NotifyGameInfo(currentGame.State)
+	msg, err := json.Marshal(
+		&message.Message{Type: message.GameInfo, Msg: currentGame.State})
+	if err != nil {
+		log.Printf("failed to marshal event payload into JSON: %s", err)
+	}
+	for _, ws := range currentGame.Players {
+		if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Printf("failed to send event to receiver: %s", err)
+		}
+	}
+
 	s.listen(ws, currentGame.State, payload.ID)
 }
 
