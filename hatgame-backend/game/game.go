@@ -188,7 +188,7 @@ func (g *Game) AddPlayer(max int, user containers.User) bool {
 func (g *Game) addWord(id uint, word string) (bool, error) {
 	g.Words.Mutex.Lock()
 	defer g.Words.Mutex.Unlock()
-	if _, ok := g.Words.ByUser[id]; !ok {
+	if _, ok := g.Players.IDs[id]; !ok {
 		return false, fmt.Errorf("no player with id %d", id)
 	}
 	if len(g.Words.ByUser[id]) == g.NumWords {
