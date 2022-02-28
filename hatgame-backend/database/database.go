@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
+	"github.com/bitterfly/go-chaos/hatgame/game"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
-	"github.com/bitterfly/go-chaos/hatgame/server/game"
 	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/exp/rand"

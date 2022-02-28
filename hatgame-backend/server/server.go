@@ -12,9 +12,9 @@ import (
 	"sync"
 
 	"github.com/bitterfly/go-chaos/hatgame/database"
+	"github.com/bitterfly/go-chaos/hatgame/game"
 	"github.com/bitterfly/go-chaos/hatgame/schema"
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
-	"github.com/bitterfly/go-chaos/hatgame/server/game"
 	"github.com/bitterfly/go-chaos/hatgame/server/message"
 	"github.com/bitterfly/go-chaos/hatgame/utils"
 	"github.com/gorilla/handlers"
