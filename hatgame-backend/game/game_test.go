@@ -99,3 +99,62 @@ func TestAddPlayer_AddExistingUserEvent(t *testing.T) {
 	game.AddPlayer(users[0])
 	close(game.Events)
 }
+
+func TestAddPlayer_HitLimitReturn(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+		{
+			ID:       2,
+			Email:    "2",
+			Username: "2"},
+		{
+			ID:       3,
+			Email:    "3",
+			Username: "3"}}
+	game := NewGame(1, users[0], 2, 1, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	go skipEvents(&wg, game)
+	game.AddPlayer(users[1])
+	res := game.AddPlayer(users[2])
+	close(game.Events)
+	if res {
+		t.Errorf(
+			"should not be able to add player in game with cap %d and joined players: %v",
+			game.NumPlayers,
+			ToString(game.Players.IDs))
+	}
+}
+
+func TestAddPlayer_HitLimitEvent(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+		{
+			ID:       2,
+			Email:    "2",
+			Username: "2"},
+		{
+			ID:       3,
+			Email:    "3",
+			Username: "3"}}
+	game := NewGame(1, users[0], 2, 1, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	expected := Event{
+		GameID:    game.ID,
+		Type:      EventError,
+		Msg:       "too many players",
+		Receivers: map[uint]struct{}{users[2].ID: {}}}
+	go checkEvents(t, &wg, game, expected)
+	game.AddPlayer(users[1])
+	game.AddPlayer(users[2])
+	close(game.Events)
+}
