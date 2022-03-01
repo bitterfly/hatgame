@@ -11,16 +11,20 @@ import (
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 )
 
-func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game,
-	expectedNum int, expectedEvent Event) {
+func fillEvents(wg *sync.WaitGroup, game *Game) []Event {
 	defer wg.Done()
 	events := make([]Event, 0)
 	for e := range game.Events {
 		events = append(events, e)
 	}
-	if len(events) != expectedNum {
+	return events
+}
+
+func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game, expectedEvents []Event) {
+	events := fillEvents(wg, game)
+	if len(events) != len(expectedEvents) {
 		t.Errorf("Function should send %d event instead of %d\nEvents: %v",
-			expectedNum,
+			len(expectedEvents),
 			len(events),
 			events)
 		return
@@ -28,10 +32,12 @@ func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game,
 	if len(events) == 0 {
 		return
 	}
-	if !compareEvents(events[0], expectedEvent) {
-		t.Errorf("The received event:\n%s\n does not match the expected event:\n%s",
-			events[0],
-			expectedEvent)
+	for i := 0; i < len(events); i++ {
+		if !compareEvents(events[i], expectedEvents[i]) {
+			t.Errorf("The received event:\n%s\n does not match the expected event:\n%s",
+				events[i],
+				expectedEvents[i])
+		}
 	}
 }
 
@@ -94,7 +100,8 @@ func TestAddPlayer_AddExistingUserReturn(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
@@ -115,17 +122,26 @@ func TestAddPlayer_AddExistingUserEvent(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"}}
+			Username: "1",
+		},
+	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Add(1)
-	expected := Event{
-		GameID:    game.ID,
-		Type:      EventError,
-		Msg:       "player already in game",
-		Receivers: map[uint]struct{}{users[0].ID: {}}}
-	go checkEvents(t, &wg, game, 1, expected)
+	go checkEvents(
+		t,
+		&wg,
+		game,
+		[]Event{
+			{
+				GameID:    game.ID,
+				Type:      EventError,
+				Msg:       "player already in game",
+				Receivers: map[uint]struct{}{users[0].ID: {}},
+			},
+		},
+	)
 	game.AddPlayer(users[0])
 	close(game.Events)
 }
@@ -135,15 +151,19 @@ func TestAddPlayer_HitLimitReturn(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 		{
 			ID:       2,
 			Email:    "2",
-			Username: "2"},
+			Username: "2",
+		},
 		{
 			ID:       3,
 			Email:    "3",
-			Username: "3"}}
+			Username: "3",
+		},
+	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
@@ -165,25 +185,36 @@ func TestAddPlayer_HitLimitEvent(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 		{
 			ID:       2,
 			Email:    "2",
-			Username: "2"},
+			Username: "2",
+		},
 		{
 			ID:       3,
 			Email:    "3",
-			Username: "3"}}
+			Username: "3",
+		},
+	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Add(1)
-	expected := Event{
-		GameID:    game.ID,
-		Type:      EventError,
-		Msg:       "too many players",
-		Receivers: map[uint]struct{}{users[2].ID: {}}}
-	go checkEvents(t, &wg, game, 1, expected)
+	go checkEvents(
+		t,
+		&wg,
+		game,
+		[]Event{
+			{
+				GameID:    game.ID,
+				Type:      EventError,
+				Msg:       "too many players",
+				Receivers: map[uint]struct{}{users[2].ID: {}},
+			},
+		},
+	)
 	game.AddPlayer(users[1])
 	game.AddPlayer(users[2])
 	close(game.Events)
@@ -194,11 +225,13 @@ func TestAddPlayer_SuccessResult(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 		{
 			ID:       2,
 			Email:    "2",
-			Username: "2"},
+			Username: "2",
+		},
 	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
@@ -219,17 +252,19 @@ func TestAddPlayer_SuccessEvent(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 		{
 			ID:       2,
 			Email:    "2",
-			Username: "2"},
+			Username: "2",
+		},
 	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Add(1)
-	go checkEvents(t, &wg, game, 0, Event{})
+	go checkEvents(t, &wg, game, []Event{})
 	game.AddPlayer(users[1])
 	close(game.Events)
 }
@@ -239,20 +274,26 @@ func TestAddWord_NoPlayerWithID(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Add(1)
 	var ID uint = 2
-	expected := Event{
-		GameID:    game.ID,
-		Type:      EventError,
-		Msg:       fmt.Sprintf("no player with id %d", ID),
-		Receivers: map[uint]struct{}{ID: {}},
-	}
-	go checkEvents(t, &wg, game, 1, expected)
+	go checkEvents(t,
+		&wg,
+		game,
+		[]Event{
+			{
+				GameID:    game.ID,
+				Type:      EventError,
+				Msg:       fmt.Sprintf("no player with id %d", ID),
+				Receivers: map[uint]struct{}{ID: {}},
+			},
+		},
+	)
 	game.AddWord(ID, "foo")
 	close(game.Events)
 }
@@ -262,20 +303,27 @@ func TestAddWord_SuccessEmpty(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 	}
 	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Add(1)
 	word := "foo"
-	expectedEvent := Event{
-		GameID:    game.ID,
-		Type:      EventAddWord,
-		Msg:       word,
-		Receivers: map[uint]struct{}{users[0].ID: {}},
-	}
-	go checkEvents(t, &wg, game, 1, expectedEvent)
+	go checkEvents(
+		t,
+		&wg,
+		game,
+		[]Event{
+			{
+				GameID:    game.ID,
+				Type:      EventAddWord,
+				Msg:       word,
+				Receivers: map[uint]struct{}{users[0].ID: {}},
+			},
+		},
+	)
 	game.AddWord(users[0].ID, word)
 	close(game.Events)
 	expectedAll := map[string]struct{}{word: {}}
@@ -302,12 +350,14 @@ func TestAddWord_SuccessFull(t *testing.T) {
 		{
 			ID:       1,
 			Email:    "1",
-			Username: "1"},
+			Username: "1",
+		},
 
 		{
 			ID:       2,
 			Email:    "2",
-			Username: "2"},
+			Username: "2",
+		},
 	}
 	words := []string{
 		"foo",
@@ -316,14 +366,20 @@ func TestAddWord_SuccessFull(t *testing.T) {
 	game := NewGame(1, users[0], 2, 2, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
-	expectedEvent := Event{
-		GameID:    game.ID,
-		Type:      EventAddWord,
-		Msg:       words[1],
-		Receivers: map[uint]struct{}{users[1].ID: {}},
-	}
 	wg.Add(1)
-	go checkEvents(t, &wg, game, 1, expectedEvent)
+	go checkEvents(
+		t,
+		&wg,
+		game,
+		[]Event{
+			{
+				GameID:    game.ID,
+				Type:      EventAddWord,
+				Msg:       words[1],
+				Receivers: map[uint]struct{}{users[1].ID: {}},
+			},
+		},
+	)
 	game.AddPlayer(users[1])
 	game.Words.ByUser[users[0].ID][words[0]] = struct{}{}
 	game.Words.All[words[0]] = struct{}{}
