@@ -295,5 +295,57 @@ func TestAddWord_SuccessEmpty(t *testing.T) {
 			PrintUintStringSet(game.Words.ByUser),
 		)
 	}
+}
 
+func TestAddWord_SuccessFull(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+
+		{
+			ID:       2,
+			Email:    "2",
+			Username: "2"},
+	}
+	words := []string{
+		"foo",
+		"bar",
+	}
+	game := NewGame(1, users[0], 2, 2, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	expectedEvent := Event{
+		GameID:    game.ID,
+		Type:      EventAddWord,
+		Msg:       words[1],
+		Receivers: map[uint]struct{}{users[1].ID: {}},
+	}
+	wg.Add(1)
+	go checkEvents(t, &wg, game, 1, expectedEvent)
+	game.AddPlayer(users[1])
+	game.Words.ByUser[users[0].ID][words[0]] = struct{}{}
+	game.Words.All[words[0]] = struct{}{}
+	game.AddWord(users[1].ID, words[1])
+	close(game.Events)
+	expectedAll := map[string]struct{}{words[0]: {}, words[1]: {}}
+	if !reflect.DeepEqual(game.Words.All, expectedAll) {
+		t.Errorf("After adding the word %s all words in game should be %v instead of %v",
+			words[1],
+			PrintStringSet(expectedAll),
+			PrintStringSet(game.Words.All),
+		)
+	}
+	expectedByUser := map[uint]map[string]struct{}{
+		users[0].ID: {words[0]: {}},
+		users[1].ID: {words[1]: {}},
+	}
+	if !reflect.DeepEqual(game.Words.ByUser, expectedByUser) {
+		t.Errorf("After adding the word %s all words in game should be %v instead of %v",
+			words[1],
+			PrintUintStringSet(expectedByUser),
+			PrintUintStringSet(game.Words.ByUser),
+		)
+	}
 }
