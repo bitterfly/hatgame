@@ -44,7 +44,7 @@ func compareEvents(first, second Event) bool {
 		reflect.DeepEqual(first.Receivers, second.Receivers)
 }
 
-func ToString(receivers map[uint]struct{}) string {
+func PrintUintSet(receivers map[uint]struct{}) string {
 	res := make([]uint, 0, len(receivers))
 	for r := range receivers {
 		res = append(res, r)
@@ -59,7 +59,7 @@ func (event Event) String() string {
 		event.GameID,
 		event.Msg,
 		event.Type,
-		ToString(event.Receivers),
+		PrintUintSet(event.Receivers),
 	)
 }
 
@@ -80,7 +80,7 @@ func TestAddPlayer_AddExistingUserReturn(t *testing.T) {
 	if res {
 		t.Errorf("should not be able to add player with id %d in game with players: %v",
 			users[0].ID,
-			ToString(game.Players.IDs))
+			PrintUintSet(game.Players.IDs))
 	}
 }
 
@@ -130,7 +130,7 @@ func TestAddPlayer_HitLimitReturn(t *testing.T) {
 		t.Errorf(
 			"should not be able to add player in game with cap %d and joined players: %v",
 			game.NumPlayers,
-			ToString(game.Players.IDs))
+			PrintUintSet(game.Players.IDs))
 	}
 }
 
@@ -184,7 +184,7 @@ func TestAddPlayer_SuccessResult(t *testing.T) {
 	if !res {
 		t.Errorf("should be able to add player with id %d in game with players: %v",
 			users[0].ID,
-			ToString(game.Players.IDs))
+			PrintUintSet(game.Players.IDs))
 	}
 }
 
