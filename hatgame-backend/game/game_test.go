@@ -162,3 +162,48 @@ func TestAddPlayer_HitLimitEvent(t *testing.T) {
 	game.AddPlayer(users[2])
 	close(game.Events)
 }
+
+func TestAddPlayer_SuccessResult(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+		{
+			ID:       2,
+			Email:    "2",
+			Username: "2"},
+	}
+	game := NewGame(1, users[0], 2, 1, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	go skipEvents(&wg, game)
+	res := game.AddPlayer(users[1])
+	close(game.Events)
+	if !res {
+		t.Errorf("should be able to add player with id %d in game with players: %v",
+			users[0].ID,
+			ToString(game.Players.IDs))
+	}
+}
+
+func TestAddPlayer_SuccessEvent(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+		{
+			ID:       2,
+			Email:    "2",
+			Username: "2"},
+	}
+	game := NewGame(1, users[0], 2, 1, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	go checkEvents(t, &wg, game, 0, Event{})
+	game.AddPlayer(users[1])
+	close(game.Events)
+}
