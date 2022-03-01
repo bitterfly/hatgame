@@ -10,20 +10,24 @@ import (
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 )
 
-func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game, expected Event) {
+func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game,
+	expectedNum int, expectedEvent Event) {
 	defer wg.Done()
 	events := make([]Event, 0)
 	for e := range game.Events {
 		events = append(events, e)
 	}
-	if len(events) != 1 {
+	if len(events) != expectedNum {
 		t.Errorf("Adding player should send 1 event instead of %d", len(events))
 		return
 	}
-	if !compareEvents(events[0], expected) {
+	if len(events) == 0 {
+		return
+	}
+	if !compareEvents(events[0], expectedEvent) {
 		t.Errorf("The received event:\n%s\n does not match the expected event:\n%s",
 			events[0],
-			expected)
+			expectedEvent)
 	}
 }
 
@@ -95,7 +99,7 @@ func TestAddPlayer_AddExistingUserEvent(t *testing.T) {
 		Type:      EventError,
 		Msg:       "player already in game",
 		Receivers: map[uint]struct{}{users[0].ID: {}}}
-	go checkEvents(t, &wg, game, expected)
+	go checkEvents(t, &wg, game, 1, expected)
 	game.AddPlayer(users[0])
 	close(game.Events)
 }
@@ -153,7 +157,7 @@ func TestAddPlayer_HitLimitEvent(t *testing.T) {
 		Type:      EventError,
 		Msg:       "too many players",
 		Receivers: map[uint]struct{}{users[2].ID: {}}}
-	go checkEvents(t, &wg, game, expected)
+	go checkEvents(t, &wg, game, 1, expected)
 	game.AddPlayer(users[1])
 	game.AddPlayer(users[2])
 	close(game.Events)
