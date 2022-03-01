@@ -10,6 +10,29 @@ import (
 	"github.com/bitterfly/go-chaos/hatgame/server/containers"
 )
 
+func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game, expected Event) {
+	defer wg.Done()
+	events := make([]Event, 0)
+	for e := range game.Events {
+		events = append(events, e)
+	}
+	if len(events) != 1 {
+		t.Errorf("Adding player should send 1 event instead of %d", len(events))
+		return
+	}
+	if !compareEvents(events[0], expected) {
+		t.Errorf("The received event:\n%s\n does not match the expected event:\n%s",
+			events[0],
+			expected)
+	}
+}
+
+func skipEvents(wg *sync.WaitGroup, game *Game) {
+	defer wg.Done()
+	for range game.Events {
+	}
+}
+
 func compareEvents(first, second Event) bool {
 	return first.GameID == second.GameID &&
 		first.Msg == second.Msg &&
@@ -17,75 +40,62 @@ func compareEvents(first, second Event) bool {
 		reflect.DeepEqual(first.Receivers, second.Receivers)
 }
 
-func (event Event) String() string {
-	receivers := make([]uint, len(event.Receivers))
-	for r := range event.Receivers {
-		receivers = append(receivers, r)
+func ToString(receivers map[uint]struct{}) string {
+	res := make([]uint, 0, len(receivers))
+	for r := range receivers {
+		res = append(res, r)
 	}
-	sort.Slice(receivers, func(i, j int) bool { return receivers[i] < receivers[j] })
+	sort.Slice(res, func(i, j int) bool { return res[i] < res[j] })
+	return fmt.Sprintf("%v", res)
+}
+
+func (event Event) String() string {
 
 	return fmt.Sprintf("GameID: %d\nMsg: %s\nType: %s\nReceivers: %v",
 		event.GameID,
 		event.Msg,
 		event.Type,
-		receivers,
+		ToString(event.Receivers),
 	)
 }
 
 func TestAddPlayer_AddExistingUserReturn(t *testing.T) {
-	host := containers.User{
-		ID:       1,
-		Email:    "1",
-		Username: "1"}
-	game := NewGame(1, host, 2, 1, 1)
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+	}
+	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		for range game.Events {
-		}
-	}()
-
-	res := game.AddPlayer(host)
+	go skipEvents(&wg, game)
+	res := game.AddPlayer(users[0])
 	close(game.Events)
-
 	if res {
-		t.Errorf("should not be able to add player with id %d in game with players: %v", host.ID, game.Players.IDs)
+		t.Errorf("should not be able to add player with id %d in game with players: %v",
+			users[0].ID,
+			ToString(game.Players.IDs))
 	}
 }
 
 func TestAddPlayer_AddExistingUserEvent(t *testing.T) {
-	host := containers.User{
-		ID:       1,
-		Email:    "1",
-		Username: "1"}
-	game := NewGame(1, host, 2, 1, 1)
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"}}
+	game := NewGame(1, users[0], 2, 1, 1)
 	var wg sync.WaitGroup
 	defer wg.Wait()
 	wg.Add(1)
-	go func() {
-		defer wg.Done()
-		events := make([]Event, 0)
-		for e := range game.Events {
-			events = append(events, e)
-		}
-		if len(events) != 1 {
-			t.Errorf("Adding player should send 1 event instead of %d", len(events))
-			return
-		}
-		expected := Event{
-			GameID:    game.ID,
-			Type:      EventError,
-			Msg:       "player already in game",
-			Receivers: map[uint]struct{}{host.ID: {}}}
-		if !compareEvents(events[0], expected) {
-			t.Errorf("The received event:\n%s\n does not match the expected event:\n%s",
-				events[0],
-				expected)
-		}
-	}()
-
-	game.AddPlayer(host)
+	expected := Event{
+		GameID:    game.ID,
+		Type:      EventError,
+		Msg:       "player already in game",
+		Receivers: map[uint]struct{}{users[0].ID: {}}}
+	go checkEvents(t, &wg, game, expected)
+	game.AddPlayer(users[0])
 	close(game.Events)
 }
