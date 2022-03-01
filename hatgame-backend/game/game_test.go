@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 
@@ -54,6 +55,28 @@ func PrintUintSet(receivers map[uint]struct{}) string {
 	}
 	sort.Slice(res, func(i, j int) bool { return res[i] < res[j] })
 	return fmt.Sprintf("%v", res)
+}
+
+func PrintStringSet(words map[string]struct{}) string {
+	res := make([]string, 0, len(words))
+	for r := range words {
+		res = append(res, r)
+	}
+	sort.Strings(res)
+	return fmt.Sprintf("%v", res)
+}
+
+func PrintUintStringSet(words map[uint]map[string]struct{}) string {
+	keys := make([]uint, 0, len(words))
+	for r := range words {
+		keys = append(keys, r)
+	}
+	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
+	res := make([]string, 0, len(keys))
+	for _, k := range keys {
+		res = append(res, fmt.Sprintf("%d: %s", k, PrintStringSet(words[k])))
+	}
+	return fmt.Sprintf("{%v}", strings.Join(res, ","))
 }
 
 func (event Event) String() string {
@@ -209,4 +232,68 @@ func TestAddPlayer_SuccessEvent(t *testing.T) {
 	go checkEvents(t, &wg, game, 0, Event{})
 	game.AddPlayer(users[1])
 	close(game.Events)
+}
+
+func TestAddWord_NoPlayerWithID(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+	}
+	game := NewGame(1, users[0], 2, 1, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	var ID uint = 2
+	expected := Event{
+		GameID:    game.ID,
+		Type:      EventError,
+		Msg:       fmt.Sprintf("no player with id %d", ID),
+		Receivers: map[uint]struct{}{ID: {}},
+	}
+	go checkEvents(t, &wg, game, 1, expected)
+	game.AddWord(ID, "foo")
+	close(game.Events)
+}
+
+func TestAddWord_SuccessEmpty(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1"},
+	}
+	game := NewGame(1, users[0], 2, 1, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	word := "foo"
+	expectedEvent := Event{
+		GameID:    game.ID,
+		Type:      EventAddWord,
+		Msg:       word,
+		Receivers: map[uint]struct{}{users[0].ID: {}},
+	}
+	go checkEvents(t, &wg, game, 1, expectedEvent)
+	game.AddWord(users[0].ID, word)
+	close(game.Events)
+	expectedAll := map[string]struct{}{word: {}}
+	if !reflect.DeepEqual(game.Words.All, expectedAll) {
+		t.Errorf("After adding the word %s all words in game should be %v instead of %v",
+			word,
+			PrintStringSet(expectedAll),
+			PrintStringSet(game.Words.All),
+		)
+	}
+	expectedByUser := map[uint]map[string]struct{}{
+		users[0].ID: {word: {}}}
+	if !reflect.DeepEqual(game.Words.ByUser, expectedByUser) {
+		t.Errorf("After adding the word %s all words in game should be %v instead of %v",
+			word,
+			PrintUintStringSet(expectedByUser),
+			PrintUintStringSet(game.Words.ByUser),
+		)
+	}
+
 }
