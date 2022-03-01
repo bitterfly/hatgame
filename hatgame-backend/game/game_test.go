@@ -405,3 +405,54 @@ func TestAddWord_SuccessFull(t *testing.T) {
 		)
 	}
 }
+
+func TestAddWord_ReachWordsLimit(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1",
+		},
+	}
+	words := []string{
+		"foo",
+		"bar",
+	}
+	game := NewGame(1, users[0], 1, 1, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	go checkEvents(
+		t,
+		&wg,
+		game,
+		[]Event{
+			{
+				GameID:    game.ID,
+				Type:      EventError,
+				Msg:       "words limit reached",
+				Receivers: map[uint]struct{}{users[0].ID: {}},
+			},
+		},
+	)
+	game.Words.ByUser[users[0].ID][words[0]] = struct{}{}
+	game.Words.All[words[0]] = struct{}{}
+	game.AddWord(users[0].ID, words[1])
+	close(game.Events)
+	expectedAll := map[string]struct{}{words[0]: {}}
+	if !reflect.DeepEqual(game.Words.All, expectedAll) {
+		t.Errorf("All words in game should be %v instead of %v",
+			PrintStringSet(expectedAll),
+			PrintStringSet(game.Words.All),
+		)
+	}
+	expectedByUser := map[uint]map[string]struct{}{
+		users[0].ID: {words[0]: {}},
+	}
+	if !reflect.DeepEqual(game.Words.ByUser, expectedByUser) {
+		t.Errorf("All words in game should be %v instead of %v",
+			PrintUintStringSet(expectedByUser),
+			PrintUintStringSet(game.Words.ByUser),
+		)
+	}
+}
