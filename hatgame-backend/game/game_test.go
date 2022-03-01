@@ -18,7 +18,10 @@ func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game,
 		events = append(events, e)
 	}
 	if len(events) != expectedNum {
-		t.Errorf("Adding player should send 1 event instead of %d", len(events))
+		t.Errorf("Function should send %d event instead of %d\nEvents: %v",
+			expectedNum,
+			len(events),
+			events)
 		return
 	}
 	if len(events) == 0 {
