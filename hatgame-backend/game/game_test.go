@@ -20,6 +20,112 @@ func fillEvents(wg *sync.WaitGroup, game *Game) []Event {
 	return events
 }
 
+func checkStartEvents(t *testing.T, wg *sync.WaitGroup, game *Game,
+	expectedEvent Event) {
+	events := fillEvents(wg, game)
+	expectedLen := 2 + len(game.Players.IDs)
+	if len(events) != expectedLen {
+		t.Errorf("Function should send %d event instead of %d\nEvents: %v",
+			expectedLen,
+			len(events),
+			events)
+		return
+	}
+
+	if !compareEvents(events[0], expectedEvent) {
+		t.Errorf("The first received event:\n%s\n does not match the expected event:\n%s",
+			events[0],
+			expectedEvent)
+	}
+
+	if events[1].GameID != events[2].GameID && events[1].GameID != expectedEvent.GameID {
+		t.Errorf("The middle events should have GameID %d instead of %d and %d",
+			expectedEvent.GameID,
+			events[1].GameID,
+			events[2].GameID,
+		)
+	}
+
+	if events[1].Type != events[2].Type && events[1].Type != EventTeam {
+		t.Errorf("The middle events should have type %s instead of %s and %s",
+			EventTeam,
+			events[1].Type,
+			events[2].Type,
+		)
+	}
+	eventReceivers := make(map[uint]struct{})
+	eventTeammates := make(map[uint]struct{})
+
+	for i := 1; i <= 2; i++ {
+		for r := range events[i].Receivers {
+			eventReceivers[r] = struct{}{}
+		}
+		team, ok := events[i].Msg.(uint)
+		if !ok {
+			t.Errorf("Message %d does not contain id in its message but contains %s",
+				i,
+				events[i].Msg)
+			return
+		}
+		eventTeammates[team] = struct{}{}
+	}
+
+	if !reflect.DeepEqual(eventReceivers, game.Players.IDs) {
+		t.Errorf(`
+			Users who received their teammates differ from all users.
+			Received: %s
+			Expected:%s`,
+			PrintUintSet(eventReceivers),
+			PrintUintSet(game.Players.IDs),
+		)
+	}
+
+	if !reflect.DeepEqual(eventTeammates, game.Players.IDs) {
+		t.Errorf("Not all users were assigned as teammates.\nReceived: %s\nExpected:%s",
+			PrintUintSet(eventTeammates),
+			PrintUintSet(game.Players.IDs),
+		)
+	}
+
+	if events[3].GameID != expectedEvent.GameID {
+		t.Errorf(
+			"The game ID should be %d in event %s",
+			expectedEvent.GameID,
+			events[3],
+		)
+	}
+
+	if events[3].Type != EventStart {
+		t.Errorf(
+			"The event type should be %s in event %s",
+			EventStart,
+			events[3],
+		)
+	}
+
+	if reflect.DeepEqual(events[3], game.Players.IDs) {
+		t.Errorf(`Not all players received the storyteller.
+		Received: %s
+		Expected: %s
+		`,
+			PrintUintSet(events[3].Receivers),
+			PrintUintSet(game.Players.IDs))
+	}
+
+	storyteller, ok := events[3].Msg.(uint)
+	if !ok {
+		t.Errorf("Event message does not contain storyteller id. Got: %s",
+			events[3].Msg)
+		return
+	}
+	if _, ok := game.Players.IDs[storyteller]; !ok {
+		t.Errorf("Storyteller with id %d is not one of the players: %s",
+			storyteller,
+			PrintUintSet(game.Players.IDs),
+		)
+	}
+}
+
 func checkEvents(t *testing.T, wg *sync.WaitGroup, game *Game, expectedEvents []Event) {
 	events := fillEvents(wg, game)
 	if len(events) != len(expectedEvents) {
@@ -448,6 +554,73 @@ func TestAddWord_ReachWordsLimit(t *testing.T) {
 	}
 	expectedByUser := map[uint]map[string]struct{}{
 		users[0].ID: {words[0]: {}},
+	}
+	if !reflect.DeepEqual(game.Words.ByUser, expectedByUser) {
+		t.Errorf("All words in game should be %v instead of %v",
+			PrintUintStringSet(expectedByUser),
+			PrintUintStringSet(game.Words.ByUser),
+		)
+	}
+}
+
+func TestAddWord_AddLastWord(t *testing.T) {
+	users := []containers.User{
+		{
+			ID:       1,
+			Email:    "1",
+			Username: "1",
+		},
+		{
+			ID:       2,
+			Email:    "2",
+			Username: "2",
+		},
+	}
+	words := []string{
+		"foo",
+		"bar",
+		"baz",
+		"qux",
+	}
+	game := NewGame(1, users[0], 2, 2, 1)
+	var wg sync.WaitGroup
+	defer wg.Wait()
+	wg.Add(1)
+	go checkStartEvents(
+		t,
+		&wg,
+		game,
+		Event{
+			GameID:    game.ID,
+			Type:      EventAddWord,
+			Msg:       words[3],
+			Receivers: map[uint]struct{}{users[1].ID: {}},
+		},
+	)
+	game.AddPlayer(users[1])
+	game.Words.ByUser[users[0].ID][words[0]] = struct{}{}
+	game.Words.ByUser[users[0].ID][words[1]] = struct{}{}
+	game.Words.ByUser[users[1].ID][words[2]] = struct{}{}
+	game.Words.All[words[0]] = struct{}{}
+	game.Words.All[words[1]] = struct{}{}
+	game.Words.All[words[2]] = struct{}{}
+	game.AddWord(users[1].ID, words[3])
+	close(game.Events)
+	expectedAll := map[string]struct{}{
+		words[0]: {},
+		words[1]: {},
+		words[2]: {},
+		words[3]: {},
+	}
+	if !reflect.DeepEqual(game.Words.All, expectedAll) {
+		t.Errorf("All words in game should be %v instead of %v",
+			PrintStringSet(expectedAll),
+			PrintStringSet(game.Words.All),
+		)
+	}
+	expectedByUser := map[uint]map[string]struct{}{
+		users[0].ID: {words[0]: {}, words[1]: {}},
+		users[1].ID: {words[2]: {}, words[3]: {}},
 	}
 	if !reflect.DeepEqual(game.Words.ByUser, expectedByUser) {
 		t.Errorf("All words in game should be %v instead of %v",
