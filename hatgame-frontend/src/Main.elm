@@ -627,6 +627,12 @@ update msg model =
                     , hideError
                     )
 
+        Msg.SendQuitLobby ->
+            ( { model | page = Home { gameId = Nothing, stats = Nothing } }
+            , sendMessage <|
+                Containers.Message.encodeMsgSend Containers.Message.SendQuitLobby
+            )
+
         Msg.SendWord wordsData ->
             case wordsData.currentWord of
                 Just w ->

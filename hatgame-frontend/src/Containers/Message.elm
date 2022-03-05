@@ -21,6 +21,7 @@ type MessageReceived
 type MessageSend
     = ReadyStoryteller
     | RequestToStart
+    | SendQuitLobby
     | Guess String
     | SendAddWord String
 
@@ -47,6 +48,10 @@ encodeMsgSend msg =
                     [ ( "type", Json.Encode.string "add_word" )
                     , ( "msg", Json.Encode.string word )
                     ]
+
+            SendQuitLobby ->
+                Json.Encode.object
+                    [ ( "type", Json.Encode.string "quit_lobby" ) ]
 
 
 decode : Decoder MessageReceived

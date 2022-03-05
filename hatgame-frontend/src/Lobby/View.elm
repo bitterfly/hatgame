@@ -84,6 +84,11 @@ html { game, processState } =
                             ]
                         ]
                     ]
+                , button
+                    [ class "btn-primary"
+                    , onClick Msg.SendQuitLobby
+                    ]
+                    [ text "Quit" ]
                 , case processState of
                     Lobby.WaitingPlayers ->
                         div
