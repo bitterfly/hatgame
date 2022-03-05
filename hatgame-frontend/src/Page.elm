@@ -4,6 +4,7 @@ import Containers.Game
 import Containers.User
 import Home
 import Host
+import Lobby
 import Login
 import Started
 import UserCredentials
@@ -16,7 +17,7 @@ type Page
     | Change Home.Data UserCredentials.Data
     | Home Home.Data
     | Host Host.Data
-    | Lobby Containers.Game.Game
+    | Lobby Lobby.Data
     | Words Words.Data
     | Started Started.Data
     | Ended (List Containers.User.User) (List Containers.Game.Team)

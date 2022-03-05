@@ -1,17 +1,14 @@
 module Lobby.View exposing (html)
 
-import Containers.Game
-import Host
 import Html exposing (Html, button, div, h5, label, p, table, tbody, td, text, th, tr)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
-import Html.Utils
-import Maybe.Utils
+import Lobby
 import Msg exposing (Msg)
 
 
-html : Containers.Game.Game -> Html msg
-html { id, numPlayers, timer, numWords, players } =
+html : Lobby.Data -> Html Msg
+html { game, processState } =
     div [ class "container" ]
         [ div [ class "row" ]
             [ div
@@ -38,7 +35,7 @@ html { id, numPlayers, timer, numWords, players } =
                             [ p []
                                 [ text "Room" ]
                             , p []
-                                [ text <| String.fromInt id ]
+                                [ text <| String.fromInt game.id ]
                             ]
                         , div
                             [ style "display" "flex"
@@ -47,7 +44,7 @@ html { id, numPlayers, timer, numWords, players } =
                             [ p [] [ text "Timer" ]
                             , p []
                                 [ text <|
-                                    String.fromInt timer
+                                    String.fromInt game.timer
                                 ]
                             ]
                         , div
@@ -57,7 +54,7 @@ html { id, numPlayers, timer, numWords, players } =
                             [ p [] [ text "Words" ]
                             , p []
                                 [ text <|
-                                    String.fromInt numWords
+                                    String.fromInt game.numWords
                                 ]
                             ]
                         , div
@@ -67,9 +64,9 @@ html { id, numPlayers, timer, numWords, players } =
                             [ p [] [ text "Players" ]
                             , p []
                                 [ text <|
-                                    String.fromInt (List.length players)
+                                    String.fromInt (List.length game.players)
                                         ++ " / "
-                                        ++ String.fromInt numPlayers
+                                        ++ String.fromInt game.numPlayers
                                 ]
                             ]
                         , div
@@ -81,12 +78,31 @@ html { id, numPlayers, timer, numWords, players } =
                                 ]
                                 [ text <|
                                     "[ "
-                                        ++ (String.join ", " <| List.map (\u -> u.username) players)
+                                        ++ (String.join ", " <| List.map (\u -> u.username) game.players)
                                         ++ " ]"
                                 ]
                             ]
                         ]
                     ]
+                , case processState of
+                    Lobby.WaitingPlayers ->
+                        div
+                            []
+                            []
+
+                    Lobby.ReadyToStart ->
+                        div
+                            [ style "display" "flex"
+                            , style "flex-direction" "column"
+                            , style "justify-content" "center"
+                            , style "align-items" "center"
+                            ]
+                            [ button
+                                [ class "btn-primary"
+                                , onClick <| Msg.SendRequestToStart
+                                ]
+                                [ text "Start" ]
+                            ]
                 ]
             ]
         ]

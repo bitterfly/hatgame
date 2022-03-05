@@ -84,7 +84,7 @@ html tokenUser err startedData =
                                     ]
                                     [ button
                                         [ class "btn-primary"
-                                        , onClick <| Msg.SendReady
+                                        , onClick <| Msg.SendReadyStoryteller
                                         ]
                                         [ text "Start" ]
                                     ]

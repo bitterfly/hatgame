@@ -44,5 +44,6 @@ type Msg
     | SendWord Words.Data
     | SendGuessed String
     | RemoveError
-    | SendReady
+    | SendReadyStoryteller
+    | SendRequestToStart
     | End

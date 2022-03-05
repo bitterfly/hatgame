@@ -16,6 +16,7 @@ import Html exposing (Html, br, div, text)
 import Html.Attributes exposing (..)
 import Http
 import Json.Decode
+import Lobby
 import Lobby.View
 import Login
 import Login.Http
@@ -392,7 +393,13 @@ update msg model =
                             ( model, Cmd.none )
 
                         Just s ->
-                            ( { model | page = Page.Lobby game }
+                            ( { model
+                                | page =
+                                    Page.Lobby
+                                        { game = game
+                                        , processState = Lobby.WaitingPlayers
+                                        }
+                              }
                             , sendJoin ( s.sessionToken, game.id )
                             )
 
@@ -441,11 +448,31 @@ update msg model =
                     )
 
                 Ok (Containers.Message.Game game) ->
-                    if List.length game.players == game.numPlayers then
-                        ( { model | page = Words { game = game, words = [], currentWord = Nothing, processState = Words.Typing } }, Cmd.none )
+                    ( { model
+                        | page =
+                            Lobby
+                                { game = game
+                                , processState = Lobby.WaitingPlayers
+                                }
+                      }
+                    , Cmd.none
+                    )
 
-                    else
-                        ( { model | page = Lobby game }, Cmd.none )
+                Ok Containers.Message.ReadyToStart ->
+                    ( case model.page of
+                        Lobby lobbyData ->
+                            { model
+                                | page =
+                                    Lobby
+                                        { game = lobbyData.game
+                                        , processState = Lobby.ReadyToStart
+                                        }
+                            }
+
+                        _ ->
+                            model
+                    , Cmd.none
+                    )
 
                 Ok (Containers.Message.Word word) ->
                     case model.page of
@@ -540,6 +567,24 @@ update msg model =
 
                         _ ->
                             ( model, Cmd.none )
+
+                Ok Containers.Message.WordPhaseStart ->
+                    ( case model.page of
+                        Lobby lobbyData ->
+                            { model
+                                | page =
+                                    Words
+                                        { game = lobbyData.game
+                                        , words = []
+                                        , currentWord = Nothing
+                                        , processState = Words.Typing
+                                        }
+                            }
+
+                        _ ->
+                            model
+                    , Cmd.none
+                    )
 
                 Ok (Containers.Message.Error err) ->
                     ( { model
@@ -654,8 +699,8 @@ view model =
             Page.Host hostData ->
                 Host.View.html model.error hostData
 
-            Page.Lobby game ->
-                Lobby.View.html game
+            Page.Lobby lobbyData ->
+                Lobby.View.html lobbyData
 
             Page.Words wordsData ->
                 Words.View.html model.error wordsData
