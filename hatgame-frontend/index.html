@@ -49,32 +49,7 @@
       });
     });
 
-    app.ports.sendMessage.subscribe(function (message) {
-      msg = '{"type": "word", "msg": "' + message + '"}';
-      if (joinWs != undefined) {
-        console.log("Sending to joinWs: " + msg);
-        joinWs.send(msg);
-      }
-      if (hostWs != undefined) {
-        console.log("sending to host: " + msg);
-        hostWs.send(msg);
-      }
-    });
-
-    app.ports.sendReady.subscribe(function (message) {
-      msg = '{"type": "ready"}';
-      if (joinWs != undefined) {
-        console.log("Sending to joinWs: " + msg);
-        joinWs.send(msg);
-      }
-      if (hostWs != undefined) {
-        console.log("sending to host: " + msg);
-        hostWs.send(msg);
-      }
-    });
-
-    app.ports.sendGuessed.subscribe(function (message) {
-      msg = '{"type": "guess", "msg": "' + message + '"}';
+    app.ports.sendMessage.subscribe(function (msg) {
       if (joinWs != undefined) {
         console.log("Sending to joinWs: " + msg);
         joinWs.send(msg);

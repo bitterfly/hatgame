@@ -474,7 +474,7 @@ update msg model =
                     , Cmd.none
                     )
 
-                Ok (Containers.Message.Word word) ->
+                Ok (Containers.Message.ReceiveAddWord word) ->
                     case model.page of
                         Page.Words wordsData ->
                             let
@@ -483,13 +483,40 @@ update msg model =
                             in
                             case compare newLen wordsData.game.numWords of
                                 EQ ->
-                                    ( { model | page = Words { game = wordsData.game, currentWord = Nothing, words = word :: wordsData.words, processState = Words.Done } }, Cmd.none )
+                                    ( { model
+                                        | page =
+                                            Words
+                                                { game = wordsData.game
+                                                , currentWord = Nothing
+                                                , words = word :: wordsData.words
+                                                , processState = Words.Done
+                                                }
+                                      }
+                                    , Cmd.none
+                                    )
 
                                 LT ->
-                                    ( { model | page = Words { wordsData | currentWord = Nothing, words = word :: wordsData.words } }, Cmd.none )
+                                    ( { model
+                                        | page =
+                                            Words
+                                                { wordsData
+                                                    | currentWord = Nothing
+                                                    , words = word :: wordsData.words
+                                                }
+                                      }
+                                    , Cmd.none
+                                    )
 
                                 GT ->
-                                    ( { model | page = Words { wordsData | currentWord = Nothing } }, Cmd.none )
+                                    ( { model
+                                        | page =
+                                            Words
+                                                { wordsData
+                                                    | currentWord = Nothing
+                                                }
+                                      }
+                                    , Cmd.none
+                                    )
 
                         _ ->
                             ( model, Cmd.none )
@@ -523,7 +550,7 @@ update msg model =
                         _ ->
                             ( model, Cmd.none )
 
-                Ok (Containers.Message.Started id) ->
+                Ok (Containers.Message.GuessPhaseStart id) ->
                     case model.page of
                         Page.Started startedData ->
                             case model.tokenUser of
@@ -603,21 +630,59 @@ update msg model =
         Msg.SendWord wordsData ->
             case wordsData.currentWord of
                 Just w ->
-                    ( { model | page = Words { wordsData | currentWord = Nothing } }, sendMessage w )
+                    ( { model
+                        | page =
+                            Words
+                                { wordsData
+                                    | currentWord = Nothing
+                                }
+                      }
+                    , sendMessage <|
+                        Containers.Message.encodeMsgSend <|
+                            Containers.Message.SendAddWord w
+                    )
 
                 _ ->
-                    ( { model | page = Words { wordsData | currentWord = Nothing } }, Cmd.none )
+                    ( { model
+                        | page =
+                            Words
+                                { wordsData
+                                    | currentWord = Nothing
+                                }
+                      }
+                    , Cmd.none
+                    )
 
-        Msg.SendReady ->
+        Msg.SendReadyStoryteller ->
             case model.page of
                 Page.Started startedData ->
-                    ( { model | page = Started { startedData | processState = Started.StorytellerActive } }, sendReady () )
+                    ( { model
+                        | page = Started { startedData | processState = Started.StorytellerActive }
+                      }
+                    , sendMessage <|
+                        Containers.Message.encodeMsgSend Containers.Message.ReadyStoryteller
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
+        Msg.SendRequestToStart ->
+            case model.page of
+                Page.Lobby _ ->
+                    ( model
+                    , sendMessage <|
+                        Containers.Message.encodeMsgSend Containers.Message.RequestToStart
+                    )
 
                 _ ->
                     ( model, Cmd.none )
 
         Msg.SendGuessed word ->
-            ( model, sendGuessed word )
+            ( model
+            , sendMessage <|
+                Containers.Message.encodeMsgSend <|
+                    Containers.Message.Guess word
+            )
 
         Msg.End ->
             case model.page of
@@ -668,12 +733,6 @@ port sendHost : ( String, ( Int, Int, Int ) ) -> Cmd msg
 
 
 port sendMessage : String -> Cmd msg
-
-
-port sendReady : () -> Cmd msg
-
-
-port sendGuessed : String -> Cmd msg
 
 
 
