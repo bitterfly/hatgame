@@ -15,16 +15,19 @@ import (
 type EventType string
 
 const (
-	EventTick     EventType = "tick"
-	EventReady    EventType = "ready"
-	EventAddWord  EventType = "word"
-	EventGuess    EventType = "guess"
-	EventGameInfo EventType = "game"
-	EventTeam     EventType = "team"
-	EventEnd      EventType = "end"
-	EventStart    EventType = "start"
-	EventStory    EventType = "story"
-	EventError    EventType = "error"
+	EventRequestToStart   EventType = "request_to_start"
+	EventReadyToStart     EventType = "ready_to_start"
+	EventWordPhaseStart   EventType = "word_phase_start"
+	EventGameInfo         EventType = "game"
+	EventTick             EventType = "tick"
+	EventTeam             EventType = "team"
+	EventEnd              EventType = "end"
+	EventGuessPhaseStart  EventType = "guess_phase_start"
+	EventStory            EventType = "story"
+	EventError            EventType = "error"
+	EventAddWord          EventType = "add_word"
+	EventReadyStoryteller EventType = "ready_storyteller"
+	EventGuess            EventType = "guess"
 )
 
 type Event struct {
@@ -235,7 +238,7 @@ func (g *Game) AddWord(id uint, word string) {
 
 	if g.CheckWordsFinished() {
 		g.MakeTeams()
-		NotifyGameStarted(g)
+		NotifyGuessPhaseStart(g)
 		NotifyStoryteller(g)
 	}
 }
@@ -261,7 +264,15 @@ func (g *Game) MakeTeams() {
 	)
 }
 
-func NotifyGameStarted(g *Game) {
+func (g *Game) StartWordPhase() {
+	g.Events <- Event{
+		GameID:    g.ID,
+		Type:      EventWordPhaseStart,
+		Receivers: g.Players.IDs,
+	}
+}
+
+func NotifyGuessPhaseStart(g *Game) {
 	for i, id := range g.Process.Teams {
 		g.Events <- Event{
 			GameID:    g.ID,
@@ -285,7 +296,7 @@ func NotifyGameEnded(game *Game) {
 func NotifyStoryteller(game *Game) {
 	game.Events <- Event{
 		GameID:    game.ID,
-		Type:      EventStart,
+		Type:      EventGuessPhaseStart,
 		Msg:       game.Process.Teams[game.Process.Storyteller],
 		Receivers: game.Players.IDs,
 	}

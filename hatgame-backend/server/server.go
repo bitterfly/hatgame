@@ -504,6 +504,21 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 			log.Printf("failed to send event to receiver: %s", err)
 		}
 	}
+	if currentGame.State.NumPlayers == len(currentGame.Players) {
+		msg, err := json.Marshal(
+			&Message{Type: game.EventReadyToStart})
+		if err != nil {
+			log.Printf("failed to marshal event payload into JSON: %s", err)
+		}
+
+		ws, ok := currentGame.Players[currentGame.State.Host]
+		if !ok {
+			log.Printf("failed to obtain host ws: %s", err)
+		}
+		if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
+			log.Printf("failed to send event to receiver: %s", err)
+		}
+	}
 
 	s.listen(ws, currentGame.State, payload.ID)
 }
@@ -544,13 +559,14 @@ func HandleMessage(
 	case game.EventAddWord:
 		word := fmt.Sprintf("%s", msg.Msg)
 		g.AddWord(id, word)
-	case game.EventReady:
+	case game.EventReadyStoryteller:
 		g.MakeTurn(id)
 	case game.EventGuess:
 		word := fmt.Sprintf("%s", msg.Msg)
 		g.GuessWord(word)
 		g.GetNextWord()
-
+	case game.EventRequestToStart:
+		g.StartWordPhase()
 	default:
 		log.Printf("can't decode message: %s", msg)
 	}
