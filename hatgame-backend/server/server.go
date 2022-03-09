@@ -429,6 +429,11 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 				log.Printf("[handleEvent] %s", err)
 			}
 		}
+
+		for _, ch := range s.Games[gameID].State.Players.Quit {
+			close(ch)
+		}
+
 		for _, ws := range s.Games[gameID].Players {
 			ws.Close()
 		}
@@ -442,13 +447,17 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to send event to receiver: %s", err)
 	}
 
-	s.listen(ws, currentGame, payload.ID)
+	ended := s.listen(ws, currentGame, payload.ID)
+	log.Printf("Exit host %d\n", payload.ID)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
-	derr = database.AddGame(s.DB, currentGame)
-	if derr != nil {
-		log.Printf("Error when inserting game to database: %s", err.Error())
+	if ended == GameEnded {
+		log.Printf("Writing to database.\n")
+		derr = database.AddGame(s.DB, currentGame)
+		if derr != nil {
+			log.Printf("Error when inserting game to database: %s", err.Error())
+		}
 	}
 	delete(s.Games, gameID)
 }
@@ -494,6 +503,7 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	currentGame.Players[user.ID] = ws
+
 	msg, err := json.Marshal(
 		&Message{Type: game.EventGameInfo, Msg: currentGame.State})
 	if err != nil {
@@ -521,9 +531,17 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.listen(ws, currentGame.State, payload.ID)
+	log.Printf("Exit join %d\n", payload.ID)
 }
 
-func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) {
+type ListenExitStatus int
+
+const (
+	GameEnded ListenExitStatus = iota
+	GameAborted
+)
+
+func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) ListenExitStatus {
 	msg := &Message{}
 	message := make(chan *Message, 1)
 	defer close(message)
@@ -540,9 +558,16 @@ func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) {
 
 	for {
 		select {
+		case _, ok := <-game.Players.Quit[id]:
+			if ok {
+				fmt.Printf("User %d quitting\n", id)
+				fmt.Printf("Closing %d websocket\n", id)
+				ws.Close()
+				return GameAborted
+			}
 		case _, ok := <-game.Process.GameEnd:
 			if !ok {
-				return
+				return GameEnded
 			}
 		case msg := <-message:
 			go HandleMessage(game, id, msg)
@@ -567,6 +592,8 @@ func HandleMessage(
 		g.GetNextWord()
 	case game.EventRequestToStart:
 		g.StartWordPhase()
+	case game.EventQuitLobby:
+		g.RemovePlayer(id)
 	default:
 		log.Printf("can't decode message: %s", msg)
 	}

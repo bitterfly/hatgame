@@ -28,6 +28,7 @@ const (
 	EventAddWord          EventType = "add_word"
 	EventReadyStoryteller EventType = "ready_storyteller"
 	EventGuess            EventType = "guess"
+	EventQuitLobby        EventType = "quit_lobby"
 )
 
 type Event struct {
@@ -51,12 +52,13 @@ type Game struct {
 
 type Players struct {
 	IDs   map[uint]struct{}
-	Users map[containers.User]struct{}
+	Users map[uint]containers.User
+	Quit  map[uint]chan struct{}
 }
 
 func (p Players) MarshalJSON() ([]byte, error) {
 	Players := make([]containers.User, 0, len(p.Users))
-	for v := range p.Users {
+	for _, v := range p.Users {
 		Players = append(Players, v)
 	}
 	return json.Marshal(Players)
@@ -108,15 +110,49 @@ func (g *Game) GetResults() {
 	})
 }
 
+func (g *Game) CloseChannels() {
+}
+
 func (g *Game) GetNextWord() {
 	word, found := g.nextWord()
-	if !found {
-		NotifyGameEnded(g)
-		close(g.Process.GameEnd)
+	if found {
+		NotifyWord(g, word)
+		return
+	}
+	NotifyGameEnded(g)
+	close(g.Process.GameEnd)
+	close(g.Events)
+}
+
+func (g *Game) RemovePlayer(id uint) {
+	if g.Host == id {
+		for _, quitChan := range g.Players.Quit {
+			quitChan <- struct{}{}
+		}
+		g.Events <- Event{
+			GameID:    g.ID,
+			Type:      EventQuitLobby,
+			Receivers: g.Players.IDs,
+		}
 		close(g.Events)
 		return
 	}
-	NotifyWord(g, word)
+	g.Players.Quit[id] <- struct{}{}
+	close(g.Players.Quit[id])
+	delete(g.Players.Quit, id)
+	delete(g.Players.IDs, id)
+	delete(g.Players.Users, id)
+	g.Events <- Event{
+		GameID:    g.ID,
+		Type:      EventQuitLobby,
+		Receivers: map[uint]struct{}{id: {}},
+	}
+	g.Events <- Event{
+		GameID:    g.ID,
+		Type:      EventGameInfo,
+		Msg:       g,
+		Receivers: g.Players.IDs,
+	}
 }
 
 func (g *Game) nextWord() (string, bool) {
@@ -167,7 +203,8 @@ func NewGame(gameID uint, host containers.User, numPlayers, numWords, timer int)
 		Events:     make(chan Event),
 		Players: Players{
 			IDs:   map[uint]struct{}{host.ID: {}},
-			Users: map[containers.User]struct{}{host: {}},
+			Users: map[uint]containers.User{host.ID: host},
+			Quit:  map[uint]chan struct{}{host.ID: make(chan struct{})},
 		},
 	}
 }
@@ -195,7 +232,8 @@ func (g *Game) AddPlayer(user containers.User) bool {
 	defer g.Words.Mutex.Unlock()
 	g.Words.ByUser[user.ID] = make(map[string]struct{})
 	g.Players.IDs[user.ID] = struct{}{}
-	g.Players.Users[user] = struct{}{}
+	g.Players.Quit[user.ID] = make(chan struct{})
+	g.Players.Users[user.ID] = user
 	return true
 }
 
