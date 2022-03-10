@@ -713,6 +713,17 @@ update msg model =
         Msg.RemoveError ->
             ( { model | error = Nothing }, Cmd.none )
 
+        Msg.GoTo page ->
+            case page of
+                Page.Home _ ->
+                    ({model | page = page},
+                    case model.tokenUser of
+                        Nothing -> 
+                            Cmd.none
+                        Just t ->
+                            Home.Http.getStats model t)
+                _ -> (model, Cmd.none)
+
 
 handleLogin : Model -> Cmd Msg
 handleLogin model =

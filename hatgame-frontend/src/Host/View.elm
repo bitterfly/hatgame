@@ -7,6 +7,7 @@ import Html.Events exposing (onClick, onInput)
 import Html.Utils
 import Maybe.Utils
 import Msg exposing (Msg)
+import Page exposing(Page)
 
 
 html : Maybe String -> Host.Data -> Html Msg
@@ -110,6 +111,13 @@ html err hostData =
                         ]
                         [ text "Start" ]
                     , Html.Utils.divOnJust err
+                    ,button
+                        [ class "btn-primary"
+                        , onClick <| Msg.GoTo (Page.Home {
+                            gameId = Nothing,
+                            stats = Nothing})
+                        ]
+                        [ text "Quit" ]
                     ]
                 ]
             ]

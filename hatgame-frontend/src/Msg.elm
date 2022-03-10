@@ -9,6 +9,7 @@ import Http
 import Login
 import UserCredentials
 import Words
+import Page exposing(Page)
 
 
 type Field
@@ -35,6 +36,7 @@ type Msg
     | GameOk (Result Http.Error ())
     | GotGame (Result Http.Error Containers.Game.Game)
     | GotStats (Result Http.Error Containers.Statistics.Statistics)
+    | GoTo Page -- Msg.GoTo <| Page.Home defaultHomeData
     | Create
     | Nothing
     | Host
