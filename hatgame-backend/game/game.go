@@ -29,6 +29,7 @@ const (
 	EventReadyStoryteller EventType = "ready_storyteller"
 	EventGuess            EventType = "guess"
 	EventQuitLobby        EventType = "quit_lobby"
+	EventForcefullyEnded  EventType = "forcefully_ended"
 )
 
 type Event struct {
@@ -121,6 +122,9 @@ func (g *Game) GetNextWord() {
 	}
 	NotifyGameEnded(g)
 	close(g.Process.GameEnd)
+	for _, ch := range g.Players.Quit {
+		close(ch)
+	}
 	close(g.Events)
 }
 
@@ -128,10 +132,11 @@ func (g *Game) RemovePlayer(id uint) {
 	if g.Host == id {
 		for _, quitChan := range g.Players.Quit {
 			quitChan <- struct{}{}
+			close(quitChan)
 		}
 		g.Events <- Event{
 			GameID:    g.ID,
-			Type:      EventQuitLobby,
+			Type:      EventForcefullyEnded,
 			Receivers: g.Players.IDs,
 		}
 		close(g.Events)
@@ -144,7 +149,7 @@ func (g *Game) RemovePlayer(id uint) {
 	delete(g.Players.Users, id)
 	g.Events <- Event{
 		GameID:    g.ID,
-		Type:      EventQuitLobby,
+		Type:      EventForcefullyEnded,
 		Receivers: map[uint]struct{}{id: {}},
 	}
 	g.Events <- Event{
@@ -366,7 +371,6 @@ func (g *Game) MakeTurn(id uint) {
 	for {
 		select {
 		case <-time.After(time.Duration(g.Timer) * time.Second):
-			fmt.Println("Timer out")
 			g.Process.Storyteller = (g.Process.Storyteller + 1) % g.NumPlayers
 			NotifyStoryteller(g)
 			return
@@ -381,7 +385,6 @@ func (g *Game) MakeTurn(id uint) {
 func tick(game *Game, timer *time.Ticker) {
 	i := game.Timer
 	for _ = range timer.C {
-		fmt.Println("tick")
 		i -= 1
 		game.Events <- Event{
 			GameID:    game.ID,

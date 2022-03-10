@@ -351,12 +351,12 @@ func (s *Server) handleUserChange(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvent(event game.Event) error {
-	game, ok := s.Games[event.GameID]
+	g, ok := s.Games[event.GameID]
 	if !ok {
 		return fmt.Errorf("failed to handle event: game id %d not found", event.GameID)
 	}
 	for receiver := range event.Receivers {
-		ws, ok := game.Players[receiver]
+		ws, ok := g.Players[receiver]
 		if !ok {
 			log.Printf("failed to send event to receiver: receiver id %d not found", receiver)
 		}
@@ -367,7 +367,14 @@ func (s *Server) handleEvent(event game.Event) error {
 		if err := ws.WriteMessage(websocket.TextMessage, msg); err != nil {
 			log.Printf("failed to send event to receiver: %s", err)
 		}
+
+		if event.Type == game.EventForcefullyEnded {
+			log.Printf("Closing websocket for %d\n", receiver)
+			ws.Close()
+			delete(g.Players, receiver)
+		}
 	}
+
 	return nil
 }
 
@@ -430,10 +437,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		for _, ch := range s.Games[gameID].State.Players.Quit {
-			close(ch)
-		}
-
 		for _, ws := range s.Games[gameID].Players {
 			ws.Close()
 		}
@@ -448,7 +451,6 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ended := s.listen(ws, currentGame, payload.ID)
-	log.Printf("Exit host %d\n", payload.ID)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
@@ -531,7 +533,6 @@ func (s *Server) handleJoin(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.listen(ws, currentGame.State, payload.ID)
-	log.Printf("Exit join %d\n", payload.ID)
 }
 
 type ListenExitStatus int
@@ -560,9 +561,6 @@ func (s *Server) listen(ws *websocket.Conn, game *game.Game, id uint) ListenExit
 		select {
 		case _, ok := <-game.Players.Quit[id]:
 			if ok {
-				fmt.Printf("User %d quitting\n", id)
-				fmt.Printf("Closing %d websocket\n", id)
-				ws.Close()
 				return GameAborted
 			}
 		case _, ok := <-game.Process.GameEnd:
