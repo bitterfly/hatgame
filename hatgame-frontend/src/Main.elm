@@ -613,6 +613,16 @@ update msg model =
                     , Cmd.none
                     )
 
+                Ok Containers.Message.ForcefullyEnded ->
+                    ( { model | page = Home { gameId = Nothing, stats = Nothing }}, 
+                    case model.tokenUser of
+                        Nothing ->
+                            Cmd.none
+
+                        Just t ->
+                            Home.Http.getStats model t
+                    )
+
                 Ok (Containers.Message.Error err) ->
                     ( { model
                         | page =
@@ -628,7 +638,7 @@ update msg model =
                     )
 
         Msg.SendQuitLobby ->
-            ( { model | page = Home { gameId = Nothing, stats = Nothing } }
+            ( model
             , sendMessage <|
                 Containers.Message.encodeMsgSend Containers.Message.SendQuitLobby
             )
@@ -691,19 +701,14 @@ update msg model =
             )
 
         Msg.End ->
-            case model.page of
-                Page.Ended _ _ ->
-                    ( { model | page = Home { gameId = Nothing, stats = Nothing } }
-                    , case model.tokenUser of
-                        Nothing ->
-                            Cmd.none
+            ( { model | page = Home { gameId = Nothing, stats = Nothing } }
+            , case model.tokenUser of
+                Nothing ->
+                    Cmd.none
 
-                        Just t ->
-                            Home.Http.getStats model t
-                    )
-
-                _ ->
-                    ( model, Cmd.none )
+                Just t ->
+                    Home.Http.getStats model t
+            )
 
         Msg.RemoveError ->
             ( { model | error = Nothing }, Cmd.none )
@@ -781,16 +786,6 @@ view model =
                     Just u ->
                         Ended.View.html players u.user teams
         ]
-
-
-
--- ++ (case model.error of
---         Nothing ->
---             []
---         Just e ->
---             [ div [ style "color" "red" ] [ text e ] ]
---    )
-
 
 hideError : Cmd Msg
 hideError =

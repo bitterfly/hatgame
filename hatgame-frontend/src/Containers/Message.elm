@@ -13,6 +13,7 @@ type MessageReceived
     | Tick Int
     | GuessPhaseStart Int
     | Ended (List Containers.Game.Team)
+    | ForcefullyEnded
     | Error String
     | ReadyToStart
     | WordPhaseStart
@@ -93,6 +94,9 @@ decodeMsgString str =
 
         "word_phase_start" ->
             Json.Decode.succeed WordPhaseStart
+
+        "forcefully_ended" ->
+            Json.Decode.succeed ForcefullyEnded
 
         x ->
             Json.Decode.fail <| "message not recognised " ++ x
