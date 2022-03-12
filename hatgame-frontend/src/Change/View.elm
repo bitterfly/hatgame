@@ -8,47 +8,9 @@ import Maybe.Utils
 import Msg exposing (Msg)
 import UserCredentials
 
-
-
--- html : UserCredentials.Data -> Html Msg
--- html changeData =
---     div []
---         [ div []
---             [ text (Maybe.withDefault "" changeData.email)
---             ]
---         , br [] []
---         , input
---             [ type_ "password"
---             , placeholder "new password"
---             , value (Maybe.withDefault "" changeData.password)
---             , onInput <|
---                 \str ->
---                     Msg.ChangeChangePage
---                         { changeData
---                             | password = Maybe.Utils.fromString str
---                         }
---             ]
---             []
---         , br [] []
---         , input
---             [ placeholder "username"
---             , value (Maybe.withDefault "" changeData.username)
---             , onInput <|
---                 \str ->
---                     Msg.ChangeChangePage
---                         { changeData
---                             | username = Maybe.Utils.fromString str
---                         }
---             ]
---             []
---         , br [] []
---         , button [ onClick Msg.ChangeUserData ] [ text "Apply" ]
---         ]
-
-
-html : Maybe String -> UserCredentials.Data -> Html Msg
+html : Maybe String -> UserCredentials.Data -> List (Html Msg)
 html err changeData =
-    div [ class "container" ]
+    [div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ classList
@@ -125,4 +87,4 @@ html err changeData =
                 , Html.Utils.divOnJust err
                 ]
             ]
-        ]
+        ]]

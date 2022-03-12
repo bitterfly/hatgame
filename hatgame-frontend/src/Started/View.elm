@@ -11,9 +11,9 @@ import Progress.Ring
 import Started
 
 
-html : Maybe Containers.User.WithToken -> Maybe String -> Started.Data -> Html Msg
+html : Maybe Containers.User.WithToken -> Maybe String -> Started.Data -> List (Html Msg)
 html tokenUser err startedData =
-    div []
+    [div []
         [ div [ class "header-home" ]
             [ label [ class "user-label" ] [ text <| Containers.User.maybeUsernameWithToken tokenUser ]
             , text "you're playing with"
@@ -112,4 +112,4 @@ html tokenUser err startedData =
                     ]
                 ]
             ]
-        ]
+        ]]

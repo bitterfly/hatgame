@@ -9,9 +9,9 @@ import Msg exposing (Msg)
 import UserCredentials
 
 
-html : Maybe String -> UserCredentials.Data -> Html Msg
+html : Maybe String -> UserCredentials.Data -> List (Html Msg)
 html err registerData =
-    div [ class "container" ]
+    [div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ classList
@@ -88,4 +88,4 @@ html err registerData =
                 , Html.Utils.divOnJust err
                 ]
             ]
-        ]
+        ]]

@@ -10,9 +10,9 @@ import Msg exposing (Msg)
 import Page exposing(Page)
 
 
-html : Maybe String -> Host.Data -> Html Msg
+html : Maybe String -> Host.Data -> List (Html Msg)
 html err hostData =
-    div [ class "container" ]
+    [div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ classList
@@ -121,4 +121,4 @@ html err hostData =
                     ]
                 ]
             ]
-        ]
+        ]]

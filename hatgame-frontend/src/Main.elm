@@ -1,6 +1,7 @@
 port module Main exposing (main)
 
 import Browser
+import Browser.Navigation exposing (Key)
 import Change.Http
 import Change.View
 import Containers.Game
@@ -30,6 +31,7 @@ import Started exposing (ProcessState(..))
 import Started.View
 import Task
 import Time
+import Url exposing (Url)
 import Words
 import Words.View
 
@@ -40,7 +42,41 @@ import Words.View
 
 main : Program String Model Msg
 main =
-    Browser.element { init = init, update = update, view = view, subscriptions = subscriptions }
+    Browser.application
+        { init = init
+        , view = view
+        , update = update
+        , subscriptions = subscriptions
+        , onUrlRequest = onUrlRequest
+        , onUrlChange = onUrlChange
+        }
+
+
+
+-- application :
+--     { init : flags -> Url -> Key -> ( model, Cmd msg )
+--     , view : model -> Document msg
+--     , update : msg -> model -> ( model, Cmd msg )
+--     , subscriptions : model -> Sub msg
+--     , onUrlRequest : UrlRequest -> msg
+--     , onUrlChange : Url -> msg
+--     }
+-- element :
+--     { init : flags -> ( model, Cmd msg )
+--     , view : model -> Html msg
+--     , update : msg -> model -> ( model, Cmd msg )
+--     , subscriptions : model -> Sub msg
+--     }
+
+
+onUrlRequest : Browser.UrlRequest -> Msg
+onUrlRequest _ =
+    Msg.Nothing
+
+
+onUrlChange : Url -> Msg
+onUrlChange _ =
+    Msg.Nothing
 
 
 
@@ -52,15 +88,17 @@ type alias Model =
     , tokenUser : Maybe Containers.User.WithToken
     , backend : String
     , error : Maybe String
+    , key : Key
     }
 
 
-init : String -> ( Model, Cmd Msg )
-init backend =
+init : String -> Url -> Key -> ( Model, Cmd Msg )
+init backend _ key =
     ( { page = Page.Login Login.default
       , tokenUser = Nothing
       , backend = backend
       , error = Nothing
+      , key = key
       }
     , Cmd.none
     )
@@ -614,8 +652,8 @@ update msg model =
                     )
 
                 Ok Containers.Message.ForcefullyEnded ->
-                    ( { model | page = Home { gameId = Nothing, stats = Nothing }}, 
-                    case model.tokenUser of
+                    ( { model | page = Home { gameId = Nothing, stats = Nothing } }
+                    , case model.tokenUser of
                         Nothing ->
                             Cmd.none
 
@@ -716,13 +754,17 @@ update msg model =
         Msg.GoTo page ->
             case page of
                 Page.Home _ ->
-                    ({model | page = page},
-                    case model.tokenUser of
-                        Nothing -> 
+                    ( { model | page = page }
+                    , case model.tokenUser of
+                        Nothing ->
                             Cmd.none
+
                         Just t ->
-                            Home.Http.getStats model t)
-                _ -> (model, Cmd.none)
+                            Home.Http.getStats model t
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
 
 
 handleLogin : Model -> Cmd Msg
@@ -761,42 +803,44 @@ port sendMessage : String -> Cmd msg
 -- VIEW
 
 
-view : Model -> Html Msg
+view : Model -> Browser.Document Msg
 view model =
-    div [] <|
-        [ case model.page of
-            Page.Login loginData ->
-                Login.View.html model.error loginData
+    case model.page of
+        Page.Login loginData ->
+            { title = "login", body = Login.View.html model.error loginData }
 
-            Page.Register registerData ->
-                Register.View.html model.error registerData
+        Page.Register registerData ->
+            { title = "register", body = Register.View.html model.error registerData }
 
-            Page.Change _ changeData ->
-                Change.View.html model.error changeData
+        Page.Change _ changeData ->
+            { title = "change", body = Change.View.html model.error changeData }
 
-            Page.Home homeData ->
-                Home.View.html model.tokenUser model.error homeData
+        Page.Home homeData ->
+            { title = "home", body = Home.View.html model.tokenUser model.error homeData }
 
-            Page.Host hostData ->
-                Host.View.html model.error hostData
+        Page.Host hostData ->
+            { title = "host", body = Host.View.html model.error hostData }
 
-            Page.Lobby lobbyData ->
-                Lobby.View.html lobbyData
+        Page.Lobby lobbyData ->
+            { title = "lobby", body = Lobby.View.html lobbyData }
 
-            Page.Words wordsData ->
-                Words.View.html model.error wordsData
+        Page.Words wordsData ->
+            { title = "words", body = Words.View.html model.error wordsData }
 
-            Page.Started startedData ->
-                Started.View.html model.tokenUser model.error startedData
+        Page.Started startedData ->
+            { title = "started", body = Started.View.html model.tokenUser model.error startedData }
 
-            Page.Ended players teams ->
+        Page.Ended players teams ->
+            { title = "ended"
+            , body =
                 case model.tokenUser of
                     Nothing ->
-                        div [] []
+                        [ div [] [] ]
 
                     Just u ->
                         Ended.View.html players u.user teams
-        ]
+            }
+
 
 hideError : Cmd Msg
 hideError =

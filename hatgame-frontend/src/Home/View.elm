@@ -11,9 +11,9 @@ import Maybe.Utils
 import Msg exposing (Msg)
 
 
-html : Maybe Containers.User.WithToken -> Maybe String -> Home.Data -> Html Msg
+html : Maybe Containers.User.WithToken -> Maybe String -> Home.Data -> List (Html Msg)
 html tokenUser err homeData =
-    div []
+    [div []
         [ div [ class "header-home" ]
             [ label [ class "user-label" ] [ text <| Containers.User.maybeUsernameWithToken tokenUser ]
             , button
@@ -81,3 +81,4 @@ html tokenUser err homeData =
                 ]
             ]
         ]
+    ]

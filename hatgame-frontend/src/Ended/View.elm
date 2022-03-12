@@ -8,9 +8,9 @@ import Html.Events exposing (onClick)
 import Msg exposing (Msg)
 
 
-html : List Containers.User.User -> Containers.User.User -> List Containers.Game.Team -> Html Msg
+html : List Containers.User.User -> Containers.User.User -> List Containers.Game.Team -> List (Html Msg)
 html players user teams =
-    div [ class "container" ]
+    [ div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ classList
@@ -41,6 +41,7 @@ html players user teams =
                 ]
             ]
         ]
+    ]
 
 
 showResult : List Containers.User.User -> Containers.Game.Team -> List (Html msg)
@@ -56,12 +57,3 @@ showResult players team =
         , div [] [ text <| String.fromInt team.score ]
         ]
     ]
-
-
-
--- div [] <|
---     [ text <| Containers.Game.showResult <| Containers.Game.result user teams
---     , br [] []
---     , Containers.Game.showTeams teams
---     , button [ onClick <| Msg.End ] [ text "End" ]
---     ]

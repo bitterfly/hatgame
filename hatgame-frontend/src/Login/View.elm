@@ -9,9 +9,9 @@ import Maybe.Utils
 import Msg exposing (Msg)
 
 
-html : Maybe String -> Login.Data -> Html Msg
+html : Maybe String -> Login.Data -> List (Html Msg)
 html err loginData =
-    div [ class "container" ]
+    [ div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ classList
@@ -84,8 +84,4 @@ html err loginData =
                 ]
             ]
         ]
-
-
-
---     , br [] []
---     ]
+    ]

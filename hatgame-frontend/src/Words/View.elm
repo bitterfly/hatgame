@@ -10,9 +10,9 @@ import Msg exposing (Msg)
 import Words
 
 
-html : Maybe String -> Words.Data -> Html Msg
+html : Maybe String -> Words.Data -> List (Html Msg)
 html err wordsData =
-    div [ class "container" ]
+    [ div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ classList
@@ -77,3 +77,4 @@ html err wordsData =
                 ]
             ]
         ]
+    ]

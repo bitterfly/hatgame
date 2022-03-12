@@ -7,9 +7,9 @@ import Lobby
 import Msg exposing (Msg)
 
 
-html : Lobby.Data -> Html Msg
+html : Lobby.Data -> List (Html Msg)
 html { game, processState } =
-    div [ class "container" ]
+    [div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ class "shift-3"
@@ -110,4 +110,4 @@ html { game, processState } =
                             ]
                 ]
             ]
-        ]
+        ]]
