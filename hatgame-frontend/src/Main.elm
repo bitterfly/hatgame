@@ -568,7 +568,19 @@ update msg model =
                 Ok (Containers.Message.Team partner) ->
                     case model.page of
                         Page.Words wordsData ->
-                            ( { model | page = Started { game = wordsData.game, currentWord = Nothing, partner = Containers.Game.playerById partner wordsData.game.players, timer = Nothing, processState = Started.NotStoryteller Nothing } }, Cmd.none )
+                            ( { model
+                                | page =
+                                    Started
+                                        { game = wordsData.game
+                                        , currentWord = Nothing
+                                        , partner = Containers.Game.playerById partner wordsData.game.players
+                                        , timer = Nothing
+                                        , processState = Started.NotStoryteller Nothing
+                                        , results = []
+                                        }
+                              }
+                            , Cmd.none
+                            )
 
                         _ ->
                             ( model, Cmd.none )
@@ -576,12 +588,26 @@ update msg model =
                 Ok (Containers.Message.Tick timer) ->
                     case model.page of
                         Page.Started startedData ->
-                            case timer of
-                                0 ->
-                                    ( { model | page = Started { startedData | currentWord = Nothing, timer = Nothing } }, Cmd.none )
+                            ( case startedData.processState of
+                                Started.BetweenStages ->
+                                    model
 
-                                n ->
-                                    ( { model | page = Started { startedData | timer = Just n } }, Cmd.none )
+                                _ ->
+                                    case timer of
+                                        0 ->
+                                            { model
+                                                | page =
+                                                    Started
+                                                        { startedData
+                                                            | currentWord = Nothing
+                                                            , timer = Nothing
+                                                        }
+                                            }
+
+                                        n ->
+                                            { model | page = Started { startedData | timer = Just n } }
+                            , Cmd.none
+                            )
 
                         _ ->
                             ( model, Cmd.none )
@@ -589,7 +615,16 @@ update msg model =
                 Ok (Containers.Message.Story word) ->
                     case model.page of
                         Page.Started startedData ->
-                            ( { model | page = Started { startedData | currentWord = Just word, processState = Started.StorytellerActive } }, Cmd.none )
+                            ( { model
+                                | page =
+                                    Started
+                                        { startedData
+                                            | currentWord = Just word
+                                            , processState = Started.StorytellerActive
+                                        }
+                              }
+                            , Cmd.none
+                            )
 
                         _ ->
                             ( model, Cmd.none )
@@ -597,44 +632,77 @@ update msg model =
                 Ok (Containers.Message.GuessPhaseStart id) ->
                     case model.page of
                         Page.Started startedData ->
-                            case model.tokenUser of
-                                Nothing ->
+                            case startedData.processState of
+                                Started.BetweenStages ->
                                     ( model, Cmd.none )
 
-                                Just t ->
-                                    if t.user.id == id then
-                                        ( { model
-                                            | page =
-                                                Started
-                                                    { startedData
-                                                        | processState = Started.StorytellerWaiting
-                                                        , timer = Nothing
-                                                    }
-                                          }
-                                        , Cmd.none
-                                        )
+                                _ ->
+                                    case model.tokenUser of
+                                        Nothing ->
+                                            ( model, Cmd.none )
 
-                                    else
-                                        ( { model
-                                            | page =
-                                                Started
-                                                    { startedData
-                                                        | timer = Nothing
-                                                        , processState =
-                                                            Started.NotStoryteller <|
-                                                                Containers.Game.playerById id startedData.game.players
-                                                    }
-                                          }
-                                        , Cmd.none
-                                        )
+                                        Just t ->
+                                            if t.user.id == id then
+                                                ( { model
+                                                    | page =
+                                                        Started
+                                                            { startedData
+                                                                | processState = Started.StorytellerWaiting
+                                                                , timer = Nothing
+                                                            }
+                                                  }
+                                                , Cmd.none
+                                                )
+
+                                            else
+                                                ( { model
+                                                    | page =
+                                                        Started
+                                                            { startedData
+                                                                | timer = Nothing
+                                                                , processState =
+                                                                    Started.NotStoryteller <|
+                                                                        Containers.Game.playerById id startedData.game.players
+                                                            }
+                                                  }
+                                                , Cmd.none
+                                                )
 
                         _ ->
                             ( model, Cmd.none )
 
-                Ok (Containers.Message.Ended teams) ->
+                Ok (Containers.Message.GameEnded results) ->
                     case model.page of
                         Page.Started startedData ->
-                            ( { model | page = Ended startedData.game.players teams }, Cmd.none )
+                            ( { model
+                                | page =
+                                    Ended startedData.game.players <|
+                                        Started.addResultsAndSort results startedData.results
+                              }
+                            , Cmd.none
+                            )
+
+                        _ ->
+                            ( model, Cmd.none )
+
+                Ok (Containers.Message.StageEnded results) ->
+                    case model.page of
+                        Page.Started startedData ->
+                            ( { model
+                                | page =
+                                    Started
+                                        { startedData
+                                            | currentWord = Nothing
+                                            , timer = Nothing
+                                            , processState = Started.BetweenStages
+                                            , results =
+                                                Started.addResultsAndSort
+                                                    results
+                                                    startedData.results
+                                        }
+                              }
+                            , Cmd.none
+                            )
 
                         _ ->
                             ( model, Cmd.none )
@@ -841,10 +909,12 @@ view model =
             , body =
                 case model.tokenUser of
                     Nothing ->
-                        [ div [] [] ]
+                        Ended.View.html players
+                            Nothing
+                            teams
 
                     Just u ->
-                        Ended.View.html players u.user teams
+                        Ended.View.html players (Just u.user) teams
             }
 
 

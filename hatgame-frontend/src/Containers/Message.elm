@@ -12,7 +12,8 @@ type MessageReceived
     | Story String
     | Tick Int
     | GuessPhaseStart Int
-    | Ended (List Containers.Game.Team)
+    | GameEnded (List Containers.Game.Team)
+    | StageEnded (List Containers.Game.Team)
     | ForcefullyEnded
     | Error String
     | ReadyToStart
@@ -77,8 +78,11 @@ decodeMsgString str =
         "guess_phase_start" ->
             Json.Decode.map GuessPhaseStart <| Json.Decode.field "Msg" Json.Decode.int
 
-        "end" ->
-            Json.Decode.map Ended <| Json.Decode.field "Msg" <| Json.Decode.list Containers.Game.decodeTeam
+        "game_end" ->
+            Json.Decode.map GameEnded <| Json.Decode.field "Msg" <| Json.Decode.list Containers.Game.decodeTeam
+
+        "stage_end" ->
+            Json.Decode.map StageEnded <| Json.Decode.field "Msg" <| Json.Decode.list Containers.Game.decodeTeam
 
         "story" ->
             Json.Decode.map Story <| Json.Decode.field "Msg" Json.Decode.string
