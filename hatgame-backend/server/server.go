@@ -84,7 +84,7 @@ func (s *Server) Connect(address string) error {
 	s.Mux.HandleFunc("/api/", s.handleMain)
 	s.Mux.HandleFunc("/api/login", s.handleUserLogin).Methods("POST")
 	s.Mux.HandleFunc("/api/register", s.handleUserRegister).Methods("POST")
-	s.Mux.HandleFunc("/api/host/{sessionToken}/{players}/{numWords}/{timer}", s.handleHost)
+	s.Mux.HandleFunc("/api/host/{sessionToken}/{players}/{numWords}/{numStages}/{timer}", s.handleHost)
 	s.Mux.HandleFunc("/api/join/{sessionToken}/{id}", s.handleJoin)
 	s.Mux.Use(mux.CORSMethodMiddleware(s.Mux))
 	log.Printf("Starting server on %s\n", address)
@@ -390,6 +390,13 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		log.Printf("[handleHost] Could not parse \"numWords\" var: %s", err.Error())
 		return
 	}
+
+	numStages, err := utils.ParseInt(vars, "numStages")
+	if err != nil {
+		log.Printf("[handleHost] Could not parse \"numStages\" var: %s", err.Error())
+		return
+	}
+
 	timer, err := utils.ParseInt(vars, "timer")
 	if err != nil {
 		log.Printf("[handleHost] Could not parse \"timer\" var: %s", err.Error())
@@ -410,11 +417,12 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 	gameID := s.getGameID()
 	s.Mutex.Unlock()
 
-	currentGame := game.NewGame(
+	state := game.NewGame(
 		gameID,
 		containers.User{ID: user.ID, Email: user.Email, Username: user.Username},
 		numPlayers,
 		numWords,
+		numStages,
 		timer)
 
 	ws, err := s.Upgrader.Upgrade(w, r, nil)
@@ -423,26 +431,29 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currentGame := &Game{
+		Players: map[uint]*websocket.Conn{payload.ID: ws},
+		State:   state}
 	players := make(map[uint]*websocket.Conn)
 	players[payload.ID] = ws
 
 	s.Mutex.Lock()
-	s.Games[gameID] = &Game{Players: players, State: currentGame}
+	s.Games[gameID] = currentGame
 	s.Mutex.Unlock()
 
 	go func() {
-		for event := range currentGame.Events {
+		for event := range currentGame.State.Events {
 			if err := s.handleEvent(event); err != nil {
 				log.Printf("[handleEvent] %s", err)
 			}
 		}
 
-		for _, ws := range s.Games[gameID].Players {
+		for _, ws := range currentGame.Players {
 			ws.Close()
 		}
 	}()
 
-	msg, err := json.Marshal(&Message{Type: game.EventGameInfo, Msg: currentGame})
+	msg, err := json.Marshal(&Message{Type: game.EventGameInfo, Msg: currentGame.State})
 	if err != nil {
 		log.Printf("failed to marshal event payload into JSON: %s", err)
 	}
@@ -450,13 +461,13 @@ func (s *Server) handleHost(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to send event to receiver: %s", err)
 	}
 
-	ended := s.listen(ws, currentGame, payload.ID)
+	ended := s.listen(ws, currentGame.State, payload.ID)
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
 	if ended == GameEnded {
 		log.Printf("Writing to database.\n")
-		derr = database.AddGame(s.DB, currentGame)
+		derr = database.AddGame(s.DB, currentGame.State)
 		if derr != nil {
 			log.Printf("Error when inserting game to database: %s", err.Error())
 		}

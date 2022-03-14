@@ -45,6 +45,7 @@ type Game struct {
 	NumPlayers int
 	Timer      int
 	NumWords   int
+	NumStages  int
 	Players    Players
 	Words      Words      `json:"-"`
 	Process    Process    `json:"-"`
@@ -74,6 +75,7 @@ type Words struct {
 type Process struct {
 	WordID       int
 	Storyteller  int
+	Stage        int
 	Teams        []uint
 	Result       []containers.Result
 	GuessedWords map[string]uint
@@ -180,7 +182,7 @@ func (g *Game) nextWord() (string, bool) {
 	return unguessed[rand.Intn(len(unguessed))], true
 }
 
-func NewGame(gameID uint, host containers.User, numPlayers, numWords, timer int) *Game {
+func NewGame(gameID uint, host containers.User, numPlayers, numWords, numStages, timer int) *Game {
 	wordsByUser := make(map[uint]map[string]struct{})
 	wordsByUser[host.ID] = make(map[string]struct{})
 	words := make(map[string]struct{})
@@ -199,10 +201,12 @@ func NewGame(gameID uint, host containers.User, numPlayers, numWords, timer int)
 			Mutex:        &sync.RWMutex{},
 			GameEnd:      make(chan struct{}),
 			Storyteller:  0,
+			Stage:        1,
 			WordID:       0,
 		},
 		NumPlayers: numPlayers,
 		NumWords:   numWords,
+		NumStages:  numStages,
 		Timer:      timer,
 		Host:       host.ID,
 		Events:     make(chan Event),
