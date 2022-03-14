@@ -370,12 +370,18 @@ update msg model =
                     case ( model.tokenUser, hostData.words, hostData.timer ) of
                         ( Just s, Just w, Just t ) ->
                             ( model
-                            , sendHost ( s.sessionToken, ( hostData.players, w, t ) )
+                            , sendHost
+                                ( s.sessionToken
+                                , [ hostData.players, w, hostData.stages, t ]
+                                )
                             )
 
                         ( Just s, Nothing, Nothing ) ->
                             ( model
-                            , sendHost ( s.sessionToken, ( hostData.players, Host.defaultWords, Host.defaultTimer ) )
+                            , sendHost
+                                ( s.sessionToken
+                                , [ hostData.players, Host.defaultWords, hostData.stages, Host.defaultTimer ]
+                                )
                             )
 
                         _ ->
@@ -793,7 +799,7 @@ port messageReceiver : (String -> msg) -> Sub msg
 port sendJoin : ( String, Int ) -> Cmd msg
 
 
-port sendHost : ( String, ( Int, Int, Int ) ) -> Cmd msg
+port sendHost : ( String, List Int ) -> Cmd msg
 
 
 port sendMessage : String -> Cmd msg

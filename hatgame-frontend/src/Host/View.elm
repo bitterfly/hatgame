@@ -7,12 +7,12 @@ import Html.Events exposing (onClick, onInput)
 import Html.Utils
 import Maybe.Utils
 import Msg exposing (Msg)
-import Page exposing(Page)
+import Page exposing (Page)
 
 
 html : Maybe String -> Host.Data -> List (Html Msg)
 html err hostData =
-    [div [ class "container" ]
+    [ div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ classList
@@ -82,6 +82,47 @@ html err hostData =
                         ]
                         []
                     , div [ class "spacing-both" ] []
+                    , label [ class "control-label" ] [ text "Stages" ]
+                    , input
+                        [ class "form-control"
+                        , type_ "text"
+                        , style "text-align" "center"
+                        , readonly True
+                        , value <| String.fromInt hostData.stages
+                        ]
+                        []
+                    , div
+                        []
+                        [ button
+                            [ class "btn-secondary"
+                            , onClick <|
+                                if hostData.stages == Host.default.maxStages then
+                                    Msg.Nothing
+
+                                else
+                                    Msg.ChangeHost { hostData | stages = hostData.stages + 1 }
+                            ]
+                            [ p
+                                [ class "arrow up"
+                                ]
+                                []
+                            ]
+                        , button
+                            [ class "btn-secondary"
+                            , onClick <|
+                                if hostData.stages == Host.default.stages then
+                                    Msg.Nothing
+
+                                else
+                                    Msg.ChangeHost { hostData | stages = hostData.stages - 1 }
+                            ]
+                            [ p
+                                [ class "arrow down"
+                                ]
+                                []
+                            ]
+                        ]
+                    , div [ class "spacing-both" ] []
                     , label [ class "control-label" ] [ text "Seconds" ]
                     , input
                         [ class "form-control"
@@ -111,14 +152,19 @@ html err hostData =
                         ]
                         [ text "Start" ]
                     , Html.Utils.divOnJust err
-                    ,button
+                    , button
                         [ class "btn-primary"
-                        , onClick <| Msg.GoTo (Page.Home {
-                            gameId = Nothing,
-                            stats = Nothing})
+                        , onClick <|
+                            Msg.GoTo
+                                (Page.Home
+                                    { gameId = Nothing
+                                    , stats = Nothing
+                                    }
+                                )
                         ]
                         [ text "Quit" ]
                     ]
                 ]
             ]
-        ]]
+        ]
+    ]

@@ -24,6 +24,7 @@ type alias Game =
     , numPlayers : Int
     , timer : Int
     , numWords : Int
+    , numStages : Int
     , host : Int
     , players : List User
     }
@@ -49,6 +50,7 @@ default =
     , numPlayers = 4
     , timer = 60
     , numWords = 10
+    , numStages = 1
     , host = 1
     , players = [ { id = 1, email = "foo", username = "username" } ]
     }
@@ -163,11 +165,12 @@ decodeTeam =
 
 decode : Decoder Game
 decode =
-    Json.Decode.map6 Game
+    Json.Decode.map7 Game
         (Json.Decode.field "ID" Json.Decode.int)
         (Json.Decode.field "NumPlayers" Json.Decode.int)
         (Json.Decode.field "Timer" Json.Decode.int)
         (Json.Decode.field "NumWords" Json.Decode.int)
+        (Json.Decode.field "NumStages" Json.Decode.int)
         (Json.Decode.field "Host" Json.Decode.int)
         (Json.Decode.field "Players" (Json.Decode.list decodeUser))
 
@@ -180,6 +183,7 @@ show { id, numPlayers, timer, numWords, host, players } =
         , String.join " " [ "NumPlayers:", String.fromInt numPlayers ]
         , String.join " " [ "Timer:", String.fromInt timer ]
         , String.join " " [ "NumWords:", String.fromInt numWords ]
+        , String.join " " [ "NumStages:", String.fromInt numWords ]
         , String.join " " [ "Host:", String.fromInt host ]
         , String.join " " <| "Players:" :: List.map Containers.User.show players
         ]

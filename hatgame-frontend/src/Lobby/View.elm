@@ -9,7 +9,7 @@ import Msg exposing (Msg)
 
 html : Lobby.Data -> List (Html Msg)
 html { game, processState } =
-    [div [ class "container" ]
+    [ div [ class "container" ]
         [ div [ class "row" ]
             [ div
                 [ class "shift-3"
@@ -55,6 +55,16 @@ html { game, processState } =
                             , p []
                                 [ text <|
                                     String.fromInt game.numWords
+                                ]
+                            ]
+                        , div
+                            [ style "display" "flex"
+                            , style "justify-content" "space-around"
+                            ]
+                            [ p [] [ text "Stages" ]
+                            , p []
+                                [ text <|
+                                    String.fromInt game.numStages
                                 ]
                             ]
                         , div
@@ -110,4 +120,5 @@ html { game, processState } =
                             ]
                 ]
             ]
-        ]]
+        ]
+    ]
