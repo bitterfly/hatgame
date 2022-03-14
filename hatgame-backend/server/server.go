@@ -598,7 +598,7 @@ func HandleMessage(
 	case game.EventGuess:
 		word := fmt.Sprintf("%s", msg.Msg)
 		g.GuessWord(word)
-		g.GetNextWord()
+		g.NextWord()
 	case game.EventRequestToStart:
 		g.StartWordPhase()
 	case game.EventQuitLobby:

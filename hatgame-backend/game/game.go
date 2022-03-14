@@ -21,7 +21,7 @@ const (
 	EventGameInfo         EventType = "game"
 	EventTick             EventType = "tick"
 	EventTeam             EventType = "team"
-	EventEnd              EventType = "end"
+	EventGameEnd          EventType = "game_end"
 	EventGuessPhaseStart  EventType = "guess_phase_start"
 	EventStory            EventType = "story"
 	EventError            EventType = "error"
@@ -30,6 +30,7 @@ const (
 	EventGuess            EventType = "guess"
 	EventQuitLobby        EventType = "quit_lobby"
 	EventForcefullyEnded  EventType = "forcefully_ended"
+	EventStageEnd         EventType = "stage_end"
 )
 
 type Event struct {
@@ -109,20 +110,43 @@ func (g *Game) GetResults() {
 	}
 
 	sort.SliceStable(g.Process.Result, func(i, j int) bool {
-		return g.Process.Result[i].Score > g.Process.Result[j].Score
+		return int(g.Process.Result[i].FirstID) > int(g.Process.Result[j].FirstID)
 	})
 }
 
 func (g *Game) CloseChannels() {
 }
 
-func (g *Game) GetNextWord() {
+func (g *Game) NextWord() (found bool) {
 	word, found := g.nextWord()
 	if found {
 		NotifyWord(g, word)
 		return
 	}
-	NotifyGameEnded(g)
+
+	if g.Process.Stage == g.NumStages {
+		g.End()
+		return
+	}
+	g.GetResults()
+	g.Process.Stage++
+	g.Events <- Event{
+		GameID:    g.ID,
+		Type:      EventStageEnd,
+		Receivers: g.Players.IDs,
+		Msg:       g.Process.Result,
+	}
+
+	g.Events <- Event{
+		GameID:    g.ID,
+		Type:      EventReadyToStart,
+		Receivers: map[uint]struct{}{g.Host: {}},
+	}
+	return
+}
+
+func (g *Game) End() {
+	NotifyGameEnd(g)
 	close(g.Process.GameEnd)
 	for _, ch := range g.Players.Quit {
 		close(ch)
@@ -330,12 +354,22 @@ func NotifyGuessPhaseStart(g *Game) {
 	}
 }
 
-func NotifyGameEnded(game *Game) {
+func NotifyStageEnd(game *Game) {
 	game.GetResults()
 	game.Events <- Event{
 		GameID:    game.ID,
 		Receivers: game.Players.IDs,
-		Type:      EventEnd,
+		Type:      EventStageEnd,
+		Msg:       game.Process.Result,
+	}
+}
+
+func NotifyGameEnd(game *Game) {
+	game.GetResults()
+	game.Events <- Event{
+		GameID:    game.ID,
+		Receivers: game.Players.IDs,
+		Type:      EventGameEnd,
 		Msg:       game.Process.Result,
 	}
 }
@@ -360,14 +394,9 @@ func NotifyWord(game *Game, story string) {
 }
 
 func (g *Game) MakeTurn(id uint) {
-	story, found := g.nextWord()
-
-	if !found {
-		NotifyGameEnded(g)
+	if ok := g.NextWord(); !ok {
 		return
 	}
-
-	NotifyWord(g, story)
 
 	timer := time.NewTicker(1 * time.Second)
 	defer timer.Stop()
