@@ -22,7 +22,7 @@ server {
   # we expect the api to be under /api
   # this is the easiest way to do this
 	location /api {
-		proxy_pass http://localhost:8080/api;
+		proxy_pass http://localhost:8077/api;
     # the three directives below are so we support websockets
 		proxy_http_version 1.1;
 		proxy_set_header Upgrade $http_upgrade;
