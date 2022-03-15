@@ -244,21 +244,9 @@ func NewGame(gameID uint, host containers.User, numPlayers, numWords, numStages,
 
 func (g *Game) AddPlayer(user containers.User) bool {
 	if len(g.Players.IDs) == g.NumPlayers {
-		g.Events <- Event{
-			GameID:    g.ID,
-			Type:      EventError,
-			Msg:       "too many players",
-			Receivers: map[uint]struct{}{user.ID: {}},
-		}
 		return false
 	}
 	if _, ok := g.Players.IDs[user.ID]; ok {
-		g.Events <- Event{
-			GameID:    g.ID,
-			Type:      EventError,
-			Msg:       "player already in game",
-			Receivers: map[uint]struct{}{user.ID: {}},
-		}
 		return false
 	}
 	g.Words.Mutex.Lock()

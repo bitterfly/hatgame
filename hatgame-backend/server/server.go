@@ -359,6 +359,7 @@ func (s *Server) handleEvent(event game.Event) error {
 		ws, ok := g.Players[receiver]
 		if !ok {
 			log.Printf("failed to send event to receiver: receiver id %d not found", receiver)
+			continue
 		}
 		msg, err := json.Marshal(&Message{Type: event.Type, Msg: event.Msg})
 		if err != nil {
