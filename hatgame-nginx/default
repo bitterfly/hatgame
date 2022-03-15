@@ -25,6 +25,10 @@ server {
 		proxy_pass http://localhost:8077/api;
     # the three directives below are so we support websockets
 		proxy_http_version 1.1;
+    # "infinitely" wait for queries to the backend, because we keep a websocket open
+    # this is not a great idea, we should instead only hang on websocket connections
+    # alternatively, we can make the server send pings so this doesn't happen
+    proxy_read_timeout 30000;
 		proxy_set_header Upgrade $http_upgrade;
 		proxy_set_header Connection $connection_upgrade;
 	}
