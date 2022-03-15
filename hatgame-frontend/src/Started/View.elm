@@ -206,9 +206,9 @@ betweenStagesView startedData ishost =
                 then button
                     [ class "btn-primary"
                     , onClick <|
-                        Msg.End
+                        Msg.SendRequestContinue
                     ]
-                    [ text "Start" ]
+                    [ text "Continue" ]
                 else div[][])
             ]
         ]

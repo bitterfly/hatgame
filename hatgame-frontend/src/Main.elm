@@ -814,6 +814,17 @@ update msg model =
                 _ ->
                     ( model, Cmd.none )
 
+        Msg.SendRequestContinue ->
+            case model.page of
+                Page.Started _ ->
+                    ( model
+                    , sendMessage <|
+                        Containers.Message.encodeMsgSend Containers.Message.RequestToContinue
+                    )
+
+                _ ->
+                    ( model, Cmd.none )
+
         Msg.SendGuessed word ->
             ( model
             , sendMessage <|

@@ -48,5 +48,6 @@ type Msg
     | RemoveError
     | SendReadyStoryteller
     | SendRequestToStart
+    | SendRequestContinue
     | SendQuitLobby
     | End

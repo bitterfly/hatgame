@@ -26,6 +26,7 @@ type MessageSend
     | SendQuitLobby
     | Guess String
     | SendAddWord String
+    | RequestToContinue
 
 
 encodeMsgSend : MessageSend -> String
@@ -54,6 +55,12 @@ encodeMsgSend msg =
             SendQuitLobby ->
                 Json.Encode.object
                     [ ( "type", Json.Encode.string "quit_lobby" ) ]
+            
+            RequestToContinue ->
+                Json.Encode.object
+                    [ ( "type", Json.Encode.string "request_to_continue" ) ]
+
+
 
 
 decode : Decoder MessageReceived
