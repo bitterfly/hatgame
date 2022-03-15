@@ -587,7 +587,7 @@ update msg model =
                     case model.page of
                         Page.Started startedData ->
                             ( case startedData.processState of
-                                Started.BetweenStages _ _->
+                                Started.BetweenStages _->
                                     model
 
                                 _ ->
@@ -631,7 +631,7 @@ update msg model =
                     case model.page of
                         Page.Started startedData ->
                             case startedData.processState of
-                                Started.BetweenStages _ _->
+                                Started.BetweenStages _->
                                     ( model, Cmd.none )
 
                                 _ ->
@@ -678,7 +678,7 @@ update msg model =
                                         { startedData
                                             | currentWord = Nothing
                                             , timer = Nothing
-                                            , processState = Started.BetweenStages True True
+                                            , processState = Started.GameEnded
                                             , results =
                                                 Started.addResultsAndSort
                                                     results
@@ -703,7 +703,7 @@ update msg model =
                                             { startedData
                                                 | currentWord = Nothing
                                                 , timer = Nothing
-                                                , processState = Started.BetweenStages False (u.user.id == startedData.game.host)
+                                                , processState = Started.BetweenStages (u.user.id == startedData.game.host)
                                                 , results =
                                                     Started.addResultsAndSort
                                                         results

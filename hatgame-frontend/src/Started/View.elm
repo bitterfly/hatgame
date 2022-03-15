@@ -39,7 +39,7 @@ html tokenUser err startedData =
                             , style "align-items" "center"
                             ]
                             [ 
-                                (if betweenStages startedData.processState
+                                (if gameNotActive startedData.processState
                                 then 
                                     div[][]
                                 else
@@ -54,8 +54,11 @@ html tokenUser err startedData =
                                 Started.StorytellerActive ->
                                     activeView startedData
 
-                                Started.BetweenStages ended ishost ->
-                                    endStageView startedData.game.players tokenUser startedData.results ended ishost
+                                Started.BetweenStages ishost ->
+                                    betweenStagesView startedData ishost
+
+                                Started.GameEnded ->
+                                    endView startedData tokenUser
                             ]
                     ]
                 ]
@@ -63,10 +66,11 @@ html tokenUser err startedData =
         ]
     ]
 
-betweenStages : Started.ProcessState -> Bool
-betweenStages ps =
+gameNotActive : Started.ProcessState -> Bool
+gameNotActive ps =
     case ps of
-    Started.BetweenStages _ _ -> True
+    Started.BetweenStages _  -> True
+    Started.GameEnded   -> True
     _ -> False
 
 
@@ -151,11 +155,8 @@ activeView startedData =
             [ text "Yep!" ]
         ]
 
-
-
-
-endStageView : List Containers.User.User -> Maybe Containers.User.WithToken -> List Containers.Game.Team -> Bool -> Bool -> Html Msg
-endStageView players cuser teams ended ishost =
+endView : Started.Data ->  Maybe Containers.User.WithToken -> Html Msg
+endView startedData tokenUser =
     div [ class "container" ]
         [ div [ class "row" ]
             [ div
@@ -165,41 +166,53 @@ endStageView players cuser teams ended ishost =
                 ]
                 [ div [ class "spacing-both" ]
                     []
-                ,
-                (if ended
-                then 
-                    case cuser of
-                        Nothing ->
-                            div[][]
-                        Just user ->
-                            h3 [ style "text-align" "center" ] [ text <| Containers.Game.showResult <| Containers.Game.result user.user teams ]
-                else 
-                    h3 [ style "text-align" "center" ] [ text <| "Score" ])
+                ,(case tokenUser of
+                Nothing ->
+                    div[][]
+                Just user ->
+                    h3 [ style "text-align" "center" ] [ text <| Containers.Game.showResult 
+                    <| Containers.Game.result user.user startedData.results ])
                 ,showResults
-                    players
-                    teams
-                ,
-                if ended
-                then 
-                    button
+                    startedData.game.players
+                    startedData.results
+                ,button
                     [ class "btn-primary"
                     , onClick <|
                         Msg.End
                     ]
                     [ text "End" ]
-                else 
-                    if ishost
-                    then button
-                        [ class "btn-primary"
-                        , onClick <|
-                            Msg.End
-                        ]
-                        [ text "Start" ]
-                    else div[][]
-                ]
+                
             ]
         ]
+    ]
 
+
+betweenStagesView : Started.Data -> Bool -> Html Msg
+betweenStagesView startedData ishost =
+    div [ class "container" ]
+        [ div [ class "row" ]
+            [ div
+                [ classList
+                    [ ( "shift-3", True )
+                    ]
+                ]
+                [ div [ class "spacing-both" ]
+                    []
+                ,h3 [ style "text-align" "center" ] [ text "Scores so far"]
+                ,showResults
+                    startedData.game.players
+                    startedData.results
+                ,(if ishost
+                then button
+                    [ class "btn-primary"
+                    , onClick <|
+                        Msg.End
+                    ]
+                    [ text "Start" ]
+                else div[][])
+            ]
+        ]
+    ]
 
 showResults : List Containers.User.User -> List Containers.Game.Team -> Html Msg
 showResults players teams =
