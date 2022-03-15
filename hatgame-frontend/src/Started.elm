@@ -8,7 +8,7 @@ type ProcessState
     = StorytellerWaiting
     | StorytellerActive
     | NotStoryteller (Maybe Containers.User.User)
-    | BetweenStages
+    | BetweenStages Bool Bool
 
 
 type alias Data =

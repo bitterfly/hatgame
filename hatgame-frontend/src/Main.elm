@@ -7,13 +7,11 @@ import Change.View
 import Containers.Game
 import Containers.Message
 import Containers.User
-import Ended.View
 import Generic.Utils
 import Home.Http
 import Home.View
 import Host
 import Host.View
-import Html exposing (Html, br, div, text)
 import Html.Attributes exposing (..)
 import Http
 import Json.Decode
@@ -589,7 +587,7 @@ update msg model =
                     case model.page of
                         Page.Started startedData ->
                             ( case startedData.processState of
-                                Started.BetweenStages ->
+                                Started.BetweenStages _ _->
                                     model
 
                                 _ ->
@@ -633,7 +631,7 @@ update msg model =
                     case model.page of
                         Page.Started startedData ->
                             case startedData.processState of
-                                Started.BetweenStages ->
+                                Started.BetweenStages _ _->
                                     ( model, Cmd.none )
 
                                 _ ->
@@ -672,21 +670,7 @@ update msg model =
                             ( model, Cmd.none )
 
                 Ok (Containers.Message.GameEnded results) ->
-                    case model.page of
-                        Page.Started startedData ->
-                            ( { model
-                                | page =
-                                    Ended startedData.game.players <|
-                                        Started.addResultsAndSort results startedData.results
-                              }
-                            , Cmd.none
-                            )
-
-                        _ ->
-                            ( model, Cmd.none )
-
-                Ok (Containers.Message.StageEnded results) ->
-                    case model.page of
+                   case model.page of
                         Page.Started startedData ->
                             ( { model
                                 | page =
@@ -694,13 +678,38 @@ update msg model =
                                         { startedData
                                             | currentWord = Nothing
                                             , timer = Nothing
-                                            , processState = Started.BetweenStages
+                                            , processState = Started.BetweenStages True True
                                             , results =
                                                 Started.addResultsAndSort
                                                     results
                                                     startedData.results
                                         }
                               }
+                            , Cmd.none
+                            )
+                        _ ->
+                            ( model, Cmd.none )
+
+                Ok (Containers.Message.StageEnded results) ->
+                    case model.page of
+                        Page.Started startedData ->
+                            ( 
+                                case model.tokenUser of
+                                Nothing -> model
+                                Just u -> 
+                                    { model
+                                    | page =
+                                        Started
+                                            { startedData
+                                                | currentWord = Nothing
+                                                , timer = Nothing
+                                                , processState = Started.BetweenStages False (u.user.id == startedData.game.host)
+                                                , results =
+                                                    Started.addResultsAndSort
+                                                        results
+                                                        startedData.results
+                                            }
+                                    }
                             , Cmd.none
                             )
 
@@ -903,19 +912,6 @@ view model =
 
         Page.Started startedData ->
             { title = "started", body = Started.View.html model.tokenUser model.error startedData }
-
-        Page.Ended players teams ->
-            { title = "ended"
-            , body =
-                case model.tokenUser of
-                    Nothing ->
-                        Ended.View.html players
-                            Nothing
-                            teams
-
-                    Just u ->
-                        Ended.View.html players (Just u.user) teams
-            }
 
 
 hideError : Cmd Msg

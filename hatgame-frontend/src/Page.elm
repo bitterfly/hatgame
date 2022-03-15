@@ -1,7 +1,5 @@
 module Page exposing (Page(..))
 
-import Containers.Game
-import Containers.User
 import Home
 import Host
 import Lobby
@@ -20,4 +18,3 @@ type Page
     | Lobby Lobby.Data
     | Words Words.Data
     | Started Started.Data
-    | Ended (List Containers.User.User) (List Containers.Game.Team)

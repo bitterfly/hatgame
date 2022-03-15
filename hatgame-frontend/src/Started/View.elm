@@ -1,9 +1,9 @@
 module Started.View exposing (html)
 
 import Containers.User
-import Ended.View
+import Containers.Game
 import Generic.Utils
-import Html exposing (Html, button, div, h1, h5, label, text)
+import Html exposing (Html, button, div, h1, h5, h3, label, text)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick)
 import Msg exposing (Msg)
@@ -29,13 +29,7 @@ html tokenUser err startedData =
                         , ( "has-error", err /= Nothing )
                         ]
                     ]
-                    [ if startedData.processState == Started.BetweenStages then
-                        Ended.View.showResults
-                            startedData.game.players
-                            Nothing
-                            startedData.results
-
-                      else
+                    [ 
                         div
                             [ style "display" "flex"
                             , style
@@ -44,9 +38,12 @@ html tokenUser err startedData =
                             , style "justify-content" "space-around"
                             , style "align-items" "center"
                             ]
-                            [ div [ class "spacing-both" ] []
-                            , timerView startedData
-                            , div [ class "spacing-both" ] []
+                            [ 
+                                (if betweenStages startedData.processState
+                                then 
+                                    div[][]
+                                else
+                                    timerView startedData)
                             , case startedData.processState of
                                 Started.NotStoryteller user ->
                                     otherView startedData user
@@ -57,8 +54,8 @@ html tokenUser err startedData =
                                 Started.StorytellerActive ->
                                     activeView startedData
 
-                                Started.BetweenStages ->
-                                    div [] []
+                                Started.BetweenStages ended ishost ->
+                                    endStageView startedData.game.players tokenUser startedData.results ended ishost
                             ]
                     ]
                 ]
@@ -66,10 +63,18 @@ html tokenUser err startedData =
         ]
     ]
 
+betweenStages : Started.ProcessState -> Bool
+betweenStages ps =
+    case ps of
+    Started.BetweenStages _ _ -> True
+    _ -> False
+
 
 timerView : Started.Data -> Html Msg
 timerView startedData =
-    Progress.Ring.view
+    div[][
+    div [ class "spacing-both" ] []
+    ,Progress.Ring.view
         { color =
             Generic.Utils.makeColor
                 (toFloat (Maybe.withDefault startedData.game.timer startedData.timer)
@@ -82,7 +87,8 @@ timerView startedData =
         , stroke = 30
         , radius = 100
         }
-
+    ,div [ class "spacing-both" ] []
+    ]
 
 otherView : Started.Data -> Maybe Containers.User.User -> Html Msg
 otherView startedData user =
@@ -143,4 +149,85 @@ activeView startedData =
                     onClick <| Msg.SendGuessed word
             ]
             [ text "Yep!" ]
+        ]
+
+
+
+
+endStageView : List Containers.User.User -> Maybe Containers.User.WithToken -> List Containers.Game.Team -> Bool -> Bool -> Html Msg
+endStageView players cuser teams ended ishost =
+    div [ class "container" ]
+        [ div [ class "row" ]
+            [ div
+                [ classList
+                    [ ( "shift-3", True )
+                    ]
+                ]
+                [ div [ class "spacing-both" ]
+                    []
+                ,
+                (if ended
+                then 
+                    case cuser of
+                        Nothing ->
+                            div[][]
+                        Just user ->
+                            h3 [ style "text-align" "center" ] [ text <| Containers.Game.showResult <| Containers.Game.result user.user teams ]
+                else 
+                    h3 [ style "text-align" "center" ] [ text <| "Score" ])
+                ,showResults
+                    players
+                    teams
+                ,
+                if ended
+                then 
+                    button
+                    [ class "btn-primary"
+                    , onClick <|
+                        Msg.End
+                    ]
+                    [ text "End" ]
+                else 
+                    if ishost
+                    then button
+                        [ class "btn-primary"
+                        , onClick <|
+                            Msg.End
+                        ]
+                        [ text "Start" ]
+                    else div[][]
+                ]
+            ]
+        ]
+
+
+showResults : List Containers.User.User -> List Containers.Game.Team -> Html Msg
+showResults players teams =
+    div []
+        [
+        div [ class "spacing-both" ] []
+        , div
+            [ class "display-window"
+            , style "display" "flex"
+            , style
+                "flex-direction"
+                "column"
+            , style "justify-content" "space-around"
+            ]
+          <|
+            List.concat [ List.map (showResult players) teams ]
+        ]
+
+
+showResult : List Containers.User.User -> Containers.Game.Team -> Html msg
+showResult players team =
+    div
+        [ style "display" "flex"
+        , style "justify-content" "space-around"
+        ]
+        [ div []
+            [ text <| Maybe.withDefault "" (Containers.Game.getUsername players team.playerOne)
+            ]
+        , div [] [ text <| Maybe.withDefault "" (Containers.Game.getUsername players team.playerTwo) ]
+        , div [] [ text <| String.fromInt team.score ]
         ]
