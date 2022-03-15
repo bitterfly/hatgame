@@ -15,22 +15,23 @@ import (
 type EventType string
 
 const (
-	EventRequestToStart   EventType = "request_to_start"
-	EventReadyToStart     EventType = "ready_to_start"
-	EventWordPhaseStart   EventType = "word_phase_start"
-	EventGameInfo         EventType = "game"
-	EventTick             EventType = "tick"
-	EventTeam             EventType = "team"
-	EventGameEnd          EventType = "game_end"
-	EventGuessPhaseStart  EventType = "guess_phase_start"
-	EventStory            EventType = "story"
-	EventError            EventType = "error"
-	EventAddWord          EventType = "add_word"
-	EventReadyStoryteller EventType = "ready_storyteller"
-	EventGuess            EventType = "guess"
-	EventQuitLobby        EventType = "quit_lobby"
-	EventForcefullyEnded  EventType = "forcefully_ended"
-	EventStageEnd         EventType = "stage_end"
+	EventRequestToStart    EventType = "request_to_start"
+	EventRequestToContinue EventType = "request_to_continue"
+	EventReadyToStart      EventType = "ready_to_start"
+	EventWordPhaseStart    EventType = "word_phase_start"
+	EventGameInfo          EventType = "game"
+	EventTick              EventType = "tick"
+	EventTeam              EventType = "team"
+	EventGameEnd           EventType = "game_end"
+	EventGuessPhaseStart   EventType = "guess_phase_start"
+	EventStory             EventType = "story"
+	EventError             EventType = "error"
+	EventAddWord           EventType = "add_word"
+	EventReadyStoryteller  EventType = "ready_storyteller"
+	EventGuess             EventType = "guess"
+	EventQuitLobby         EventType = "quit_lobby"
+	EventForcefullyEnded   EventType = "forcefully_ended"
+	EventStageEnd          EventType = "stage_end"
 )
 
 type Event struct {
@@ -48,6 +49,7 @@ type Game struct {
 	NumWords   int
 	NumStages  int
 	Players    Players
+	StageEnded bool       `json:"-"`
 	Words      Words      `json:"-"`
 	Process    Process    `json:"-"`
 	Events     chan Event `json:"-"`
@@ -82,6 +84,7 @@ type Process struct {
 	GuessedWords map[string]uint
 	Mutex        *sync.RWMutex
 	GameEnd      chan struct{}
+	StageEnd     chan struct{}
 }
 
 func (g *Game) GuessWord(word string) {
@@ -114,9 +117,6 @@ func (g *Game) GetResults() {
 	})
 }
 
-func (g *Game) CloseChannels() {
-}
-
 func (g *Game) NextWord() (found bool) {
 	word, found := g.nextWord()
 	if found {
@@ -128,6 +128,8 @@ func (g *Game) NextWord() (found bool) {
 		g.End()
 		return
 	}
+	g.StageEnded = true
+	close(g.Process.StageEnd)
 	g.GetResults()
 	g.Process.Stage++
 	g.Events <- Event{
@@ -148,6 +150,7 @@ func (g *Game) NextWord() (found bool) {
 func (g *Game) End() {
 	NotifyGameEnd(g)
 	close(g.Process.GameEnd)
+	close(g.Process.StageEnd)
 	for _, ch := range g.Players.Quit {
 		close(ch)
 	}
@@ -224,6 +227,7 @@ func NewGame(gameID uint, host containers.User, numPlayers, numWords, numStages,
 			GuessedWords: make(map[string]uint),
 			Mutex:        &sync.RWMutex{},
 			GameEnd:      make(chan struct{}),
+			StageEnd:     make(chan struct{}),
 			Storyteller:  0,
 			Stage:        1,
 			WordID:       0,
@@ -234,6 +238,7 @@ func NewGame(gameID uint, host containers.User, numPlayers, numWords, numStages,
 		Timer:      timer,
 		Host:       host.ID,
 		Events:     make(chan Event),
+		StageEnded: false,
 		Players: Players{
 			IDs:   map[uint]struct{}{host.ID: {}},
 			Users: map[uint]containers.User{host.ID: host},
@@ -300,6 +305,13 @@ func (g *Game) AddWord(id uint, word string) {
 		NotifyGuessPhaseStart(g)
 		NotifyStoryteller(g)
 	}
+}
+
+func (g *Game) Continue() {
+	g.StageEnded = false
+	g.Process.StageEnd = make(chan struct{})
+	g.Process.GuessedWords = map[string]uint{}
+	NotifyStoryteller(g)
 }
 
 func (g *Game) CheckWordsFinished() bool {
@@ -395,23 +407,33 @@ func (g *Game) MakeTurn(id uint) {
 			g.Process.Storyteller = (g.Process.Storyteller + 1) % g.NumPlayers
 			NotifyStoryteller(g)
 			return
-		case _, ok := <-g.Process.GameEnd:
-			if !ok {
-				return
-			}
+		case <-g.Process.GameEnd:
+			return
+		case <-g.Process.StageEnd:
+			return
 		}
 	}
 }
 
 func tick(game *Game, timer *time.Ticker) {
 	i := game.Timer
-	for _ = range timer.C {
-		i -= 1
-		game.Events <- Event{
-			GameID:    game.ID,
-			Type:      EventTick,
-			Msg:       i,
-			Receivers: game.Players.IDs,
+	for {
+		select {
+		case <-timer.C:
+			if game.StageEnded {
+				timer.Stop()
+				return
+			}
+
+			i -= 1
+			game.Events <- Event{
+				GameID:    game.ID,
+				Type:      EventTick,
+				Msg:       i,
+				Receivers: game.Players.IDs,
+			}
+		case <-game.Process.StageEnd:
+			return
 		}
 	}
 }

@@ -604,6 +604,8 @@ func HandleMessage(
 		g.StartWordPhase()
 	case game.EventQuitLobby:
 		g.RemovePlayer(id)
+	case game.EventRequestToContinue:
+		g.Continue()
 	default:
 		log.Printf("can't decode message: %s", msg)
 	}
